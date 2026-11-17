@@ -78,6 +78,34 @@
     mistake: { label: 'Erreur', mark: '?' },
     blunder: { label: 'Gaffe', mark: '??' },
   };
+  /* Les types de coups, comme sur chess.com : libellé, icône, couleur. */
+  const SVG = {
+    star: '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></svg>',
+    thumb: '<svg viewBox="0 0 24 24"><path d="M2 10h4v11H2zM8 21h9.5a2 2 0 0 0 2-1.6l1.4-7A2 2 0 0 0 19 10h-5.2l.8-4.1A2.2 2.2 0 0 0 12.4 3L8 9.5z"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><path d="M9.5 16.6 4.9 12l-1.8 1.8 6.4 6.4L21 8.7l-1.8-1.8z"/></svg>',
+    book: '<svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v16H6.5a1 1 0 0 0 0 2H20v2H6.5A2.5 2.5 0 0 1 4 19.5z"/></svg>',
+    cross: '<svg viewBox="0 0 24 24"><path d="M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24"><path d="M4 11h11.2l-4.6-4.6L12 5l7 7-7 7-1.4-1.4 4.6-4.6H4z"/></svg>',
+  };
+  CP.KIND = {
+    brilliant: { label: 'Brillant', html: '!!', color: '#26c2a3' },
+    great: { label: 'Grand coup', html: '!', color: '#5c8bc0' },
+    best: { label: 'Meilleur coup', html: SVG.star, color: '#81b64c' },
+    excellent: { label: 'Excellent', html: SVG.thumb, color: '#96bc4b' },
+    good: { label: 'Bon', html: SVG.check, color: '#95b776' },
+    book: { label: 'Théorie', html: SVG.book, color: '#a88764' },
+    forced: { label: 'Forcé', html: SVG.arrow, color: '#97a18a' },
+    inaccuracy: { label: 'Imprécision', html: '?!', color: '#f0b429' },
+    mistake: { label: 'Erreur', html: '?', color: '#ff9442' },
+    miss: { label: 'Occasion manquée', html: SVG.cross, color: '#ff6b5e' },
+    blunder: { label: 'Gaffe', html: '??', color: '#e0352b' },
+  };
+  CP.KIND_ORDER = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'inaccuracy', 'mistake', 'miss', 'blunder'];
+  CP.kindIcon = (k, cls = '') => {
+    const d = CP.KIND[k];
+    return d ? `<span class="kind-ic ${cls}" style="background:${d.color}" title="${d.label}">${d.html}</span>` : '';
+  };
+
   CP.TAGS = { menace: 'Menace pas vue', piece: 'Pièce en prise', mat: 'Mat encaissé', 'mat-rate': 'Mat raté',
     occasion: 'Erreur adverse pas punie', autre: 'Autre', piege: 'Piège d\'ouverture' };
   CP.KINDS = { best: 'Meilleur coup', threat: 'Menace', punish: 'Punir', trap: 'Piège' };

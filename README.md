@@ -29,7 +29,7 @@ Les lancements suivants ouvrent directement la fenêtre.
 | Page | À quoi ça sert |
 |---|---|
 | **Aujourd'hui** | La séance du jour : erreurs à revoir, ouvertures à réviser, dernière partie à revoir. |
-| **Parties** | Toutes tes parties, avec la précision et les gaffes. Revue coup par coup : barre d'évaluation, courbe, meilleur coup, temps passé, variantes à explorer en déplaçant les pièces. |
+| **Parties** | Toutes tes parties, avec la précision et les gaffes. Revue coup par coup comme sur chess.com : pastille animée du type de chaque coup (brillant, grand coup, meilleur, excellent, bon, théorie, forcé, imprécision, erreur, occasion manquée, gaffe), bilan de la partie pour les deux joueurs, barre d'évaluation, courbe, meilleur coup, temps passé, variantes à explorer. |
 | **Erreurs** | Chaque erreur vérifiée en profondeur devient un exercice : *meilleur coup*, *punir* l'erreur adverse que tu n'as pas punie, *menace* en deux temps (trouver ce que l'adversaire menaçait, puis la parade), et les *pièges* repérés par trapfinder. Répétition espacée : 1, 3, 7, 16, 35, 80 jours. En révision, il faut trouver **vite** (15 s par coup à trouver) : trouvé lentement, l'exercice revient plus tôt. Les nouveaux exercices suivent ta cause d'erreur la plus fréquente des 3 derniers mois. Onglet **Convertir** : les positions où tu gagnais sans gagner, à finir contre Stockfish. |
 | **Ouvertures** | Ton arbre d'ouvertures tiré de tes parties (score, perte moyenne, conseil de Stockfish, stats Lichess en option), ton répertoire (rempli en 1 clic), tes **fuites** (les coups qui te coûtent le plus), et l'entraînement des lignes. |
 | **Statistiques** | Tes coups classés comme sur chess.com (brillants !!, grands coups !, meilleurs… gaffes), la galerie de tes coups brillants, tes records (plus belle victoire, remontée, série...), et où tu perds : causes des erreurs, phase, temps de réflexion, pendule, Elo, ouvertures. |
@@ -51,6 +51,7 @@ Les lancements suivants ouvrent directement la fenêtre.
 - Moteur : `engine\stockfish.exe` (Stockfish 19, GPL v3), téléchargé par `tools\get_stockfish.py` car trop
   lourd pour GitHub. Pièces : cburnett (CC BY-SA 3.0).
 - Pièges d'ouverture : `data\pieges\*.pgn` (exportés par trapfinder, dossier `Chess`).
+- Coups de théorie : `data\ouvertures\*.tsv`, la base « chess-openings » de Lichess (domaine public, CC0).
 
 Mode développeur (navigateur au lieu de la fenêtre) :
 

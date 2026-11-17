@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import chess
 
-from . import __version__, chesscom, config, conversions, db, endgames, exercises, explorer, repertoire, stats
+from . import __version__, book, chesscom, config, conversions, db, endgames, exercises, explorer, repertoire, stats
 from .engine import EngineMissing
 from .worker import worker
 
@@ -214,6 +214,21 @@ def _pv_san(fen: str, pv: str | None, n: int = 8) -> list[str]:
     return out
 
 
+def move_kind(p: dict, forced: bool, in_book: bool) -> str | None:
+    """Le type affiché d'un coup (pas encore analysé : None)."""
+    if forced:
+        return "forced"
+    if in_book:
+        return "book"
+    if p.get("special") in ("brilliant", "great"):
+        return p["special"]
+    if p.get("cls") is None:
+        return None
+    if p.get("missed") and p["cls"] != "blunder":
+        return "miss"  # l'adversaire venait de se tromper et l'occasion est passée
+    return p["cls"]
+
+
 @route("GET", "/api/game")
 def api_game(q, body):
     conn = db.connect()
@@ -232,6 +247,13 @@ def api_game(q, body):
         b = chess.Board(rows[-1]["fen_before"])
         b.push(chess.Move.from_uci(rows[-1]["uci"]))
         final = b.fen()
+    # Type de chaque coup, comme sur chess.com : forcé, théorie, brillant, grand coup, meilleur... gaffe.
+    fens_after = [p["fen_before"] for p in plies[1:]] + ([final] if final else [])
+    names = book.book_plies(fens_after, [p["drop"] for p in plies])
+    for p, name in zip(plies, names):
+        forced = chess.Board(p["fen_before"]).legal_moves.count() == 1
+        p["book"] = name
+        p["kind"] = move_kind(p, forced, name is not None)
     ex = conn.execute("SELECT id, kind, ply FROM exercises WHERE game_id=?", (q["id"],)).fetchall()
     return {"game": game_row(g), "plies": plies, "final_fen": final, "exercises": [dict(e) for e in ex],
             "start_fen": chess.STARTING_FEN}
@@ -447,6 +469,8 @@ def serve(port: int = config.PORT) -> tuple[ThreadingHTTPServer, int]:
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("image/svg+xml", ".svg")
     db.prepare()
+    # La base d'ouvertures (≈ 2 s à charger) est prête avant la première revue de partie.
+    threading.Thread(target=book.positions, name="chessprac-book", daemon=True).start()
     for p in (port, 0):
         try:
             httpd = Server(("127.0.0.1", p), Handler)

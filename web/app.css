@@ -208,6 +208,24 @@ select.input{padding-right:8px}
   border-radius:7px;padding:2px 8px;font-weight:600}
 .board-controls{display:flex;gap:6px;justify-content:center;margin-top:12px}
 
+/* Pastille du type de coup sur l'échiquier (comme chess.com) */
+.board .move-badge{position:absolute;z-index:6;border-radius:50%;display:grid;place-items:center;color:#fff;
+  font:800 clamp(9px,1.45vw,15px)/1 var(--sans);letter-spacing:-.04em;pointer-events:auto;cursor:default;
+  box-shadow:0 2px 6px rgba(0,0,0,.35),inset 0 0 0 2px rgba(255,255,255,.9);animation:badge-pop .38s cubic-bezier(.2,1.6,.4,1)}
+.board .move-badge svg{width:62%;height:62%;fill:#fff}
+@keyframes badge-pop{0%{transform:scale(0) rotate(-25deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+.kind-ic{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;color:#fff;flex:none;
+  font:800 10.5px/1 var(--sans);letter-spacing:-.04em;vertical-align:middle}
+.kind-ic svg{width:62%;height:62%;fill:#fff}
+.kind-ic.sm{width:16px;height:16px;font-size:9px}
+.summary-table{width:100%;border-collapse:collapse;font-size:13.5px}
+.summary-table td{padding:5px 6px}
+.summary-table td.n{text-align:center;font-weight:700;font-variant-numeric:tabular-nums;width:84px}
+.summary-table .opp-name{display:inline-block;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.summary-table tr.sum-head td{font-weight:700;padding-bottom:10px}
+.summary-table .acc{display:inline-block;min-width:52px;padding:4px 8px;border-radius:8px;background:var(--sheet-2);
+  border:1px solid var(--rule);font:700 15px/1 var(--sans)}
+
 /* ---------- revue de partie ---------- */
 .review{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:22px;align-items:start}
 .review .left{max-width:640px;width:100%;justify-self:center}

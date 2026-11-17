@@ -147,6 +147,7 @@
       for (const [sq, el] of Object.entries(this.pieces)) this._place(el, sq, true);
       this._paint();
       this._drawArrows();
+      this._placeBadge();
     }
 
     flip() { this.setOrientation(this.orientation === 'w' ? 'b' : 'w'); }
@@ -260,6 +261,31 @@
         ov.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); if (ev.target === ov) { ov.remove(); resolve(null); } });
         this.el.appendChild(ov);
       });
+    }
+
+    /* Pastille du type de coup (comme sur chess.com) dans le coin de la case d'arrivée, avec une petite animation.
+       badge = {square:'e4', html:'!!', color:'#26c2a3', title:'Brillant'} ou null pour l'enlever. */
+    setBadge(badge) {
+      if (this.badgeEl) { this.badgeEl.remove(); this.badgeEl = null; }
+      this.badge = badge;
+      if (!badge) return;
+      const el = document.createElement('div');
+      el.className = 'move-badge';
+      el.style.background = badge.color;
+      el.innerHTML = badge.html;
+      if (badge.title) el.title = badge.title;
+      this.el.appendChild(el);
+      this.badgeEl = el;
+      this._placeBadge();
+    }
+
+    _placeBadge() {
+      if (!this.badgeEl || !this.badge) return;
+      const [x, y] = this._xy(this.badge.square);
+      const size = 5.2; // % de l'échiquier
+      const left = Math.min(100 - size, (x + 1) * 12.5 - size * 0.62);
+      const top = Math.max(0, y * 12.5 - size * 0.38);
+      Object.assign(this.badgeEl.style, { left: left + '%', top: top + '%', width: size + '%', height: size + '%' });
     }
 
     /* Flèches : [{from:'e2', to:'e4', color:'pen'|'ok'|'bad'|css, opacity}] */

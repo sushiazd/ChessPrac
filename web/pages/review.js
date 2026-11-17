@@ -45,6 +45,7 @@ CP.pages.review = async function (main, route, alive) {
       </div>
       <div class="stack">
         <div class="card move-info" id="info"></div>
+        <div class="card ${analyzed ? '' : 'hidden'}" id="summary"></div>
         <div class="card" id="moments-card"><div class="card-title"><h3>Tes moments clés</h3></div><div class="key-moments" id="moments"></div></div>
         <div class="moves" id="moves"></div>
         <div class="card"><div class="card-title"><h3>Analyse de la position</h3><span class="sp"></span>
@@ -63,14 +64,31 @@ CP.pages.review = async function (main, route, alive) {
     for (const j of [i, i + 1]) {
       const p = plies[j];
       if (!p) { html += '<div class="mv"></div>'; continue; }
-      const k = p.special || p.cls;
-      const c = CP.CLS[k] || {};
-      const mk = c.mark && ['brilliant', 'great', 'inaccuracy', 'mistake', 'blunder'].includes(k) ? `<span class="mark ${k}">${c.mark}</span>` : '';
-      html += `<div class="mv" data-i="${j + 1}"><span>${h(p.san)}</span>${mk}</div>`;
+      html += `<div class="mv" data-i="${j + 1}">${p.kind ? CP.kindIcon(p.kind, 'sm') : ''}<span>${h(p.san)}</span></div>`;
     }
   }
   movesEl.innerHTML = html;
   movesEl.querySelectorAll('.mv[data-i]').forEach((el) => (el.onclick = () => go(+el.dataset.i)));
+
+  // ------------------------------------------------ résumé, comme le bilan de chess.com
+  if (analyzed) {
+    const count = (mineFlag) => {
+      const c = Object.fromEntries(CP.KIND_ORDER.map((k) => [k, 0]));
+      plies.forEach((p) => { if (!!p.mine === mineFlag && c[p.kind] !== undefined) c[p.kind]++; });
+      return c;
+    };
+    const cm = count(true), co = count(false);
+    const accMe = g.acc_me ?? g.cc_acc_me, accOpp = g.acc_opp ?? g.cc_acc_opp;
+    main.querySelector('#summary').innerHTML = `<table class="summary-table">
+      <tr class="sum-head"><td><h3 style="margin:0">Bilan de la partie</h3></td><td class="n">Toi</td>
+        <td class="n"><span class="opp-name" title="${h(opp.name)}">${h(opp.name)}</span></td></tr>
+      <tr><td class="muted">Précision</td><td class="n"><span class="acc">${accMe != null ? Math.round(accMe) : '—'}</span></td>
+        <td class="n"><span class="acc">${accOpp != null ? Math.round(accOpp) : '—'}</span></td></tr>
+      ${CP.KIND_ORDER.map((k) => `<tr><td><span style="display:inline-flex;align-items:center;gap:8px">${CP.kindIcon(k, 'sm')}${CP.KIND[k].label}</span></td>
+        <td class="n" style="color:${cm[k] ? CP.KIND[k].color : 'var(--faint)'}">${cm[k]}</td>
+        <td class="n" style="color:${co[k] ? CP.KIND[k].color : 'var(--faint)'}">${co[k]}</td></tr>`).join('')}
+    </table>`;
+  }
 
   // ------------------------------------------------ moments clés
   const moments = plies.map((p, i) => ({ p, i: i + 1 }))
@@ -118,11 +136,14 @@ CP.pages.review = async function (main, route, alive) {
     const num = `${Math.ceil(idx / 2)}${idx % 2 ? '.' : '…'}`;
     if (!analyzed) return `<p class="label">${num}</p><p class="big">${who} ${h(p.san)}</p>
       <p class="small muted">${p.think !== null ? 'Temps : ' + fmt.think(p.think) : ''}</p>`;
-    const k = p.special || p.cls;
-    const c = CP.CLS[k] || { label: '' };
+    const k = p.kind || p.cls;
+    const c = CP.KIND[k] || { label: '', color: 'var(--muted)' };
     const bad = ['inaccuracy', 'mistake', 'blunder'].includes(p.cls);
     let out = `<p class="label">${num} ${p.mine ? 'Ton coup' : 'Coup adverse'}${p.think !== null ? ' · ' + fmt.think(p.think) : ''}</p>
-      <p class="big">${who} ${h(p.san)}${k === 'brilliant' ? ' !!' : k === 'great' ? ' !' : ''} <span class="cls-${k}">· ${c.label}</span></p>`;
+      <p class="big" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${CP.kindIcon(k)}<span>${who} ${h(p.san)}${k === 'brilliant' ? ' !!' : k === 'great' ? ' !' : ''}</span>
+        <span style="color:${c.color}">· ${c.label}</span></p>`;
+    if (k === 'book') out += `<p class="small ink2" style="margin:2px 0 8px">${h(p.book || '')} : un coup de théorie, connu et joué depuis longtemps.</p>`;
+    if (k === 'forced') out += `<p class="small ink2" style="margin:2px 0 8px">C'était le seul coup possible.</p>`;
     if (k === 'brilliant') out += `<p class="small cls-brilliant" style="margin:2px 0 8px">Un sacrifice, et c'est un des meilleurs coups de la position.</p>`;
     if (k === 'great') out += `<p class="small cls-great" style="margin:2px 0 8px">L'adversaire venait de gaffer, et tu as trouvé le coup qui le punit.</p>`;
     if (p.drop >= 2) out += `<p class="small ink2" style="margin:2px 0 8px">Chances de gain : ${Math.round(p.wp_before)} % → ${Math.round(p.wp_after)} % (−${Math.round(p.drop)} %)</p>`;
@@ -187,6 +208,10 @@ CP.pages.review = async function (main, route, alive) {
       arrows.push({ from: a, to: b, color: 'pen', opacity: 0.55 });
     }
     board.setArrows(arrows);
+    // Pastille du type de coup sur la case d'arrivée, comme sur chess.com (rejouée à chaque coup).
+    const lastPly = !variation && idx > 0 ? plies[idx - 1] : null;
+    const kd = lastPly && CP.KIND[lastPly.kind];
+    board.setBadge(kd ? { square: lastPly.uci.slice(2, 4), html: kd.html, color: kd.color, title: kd.label } : null);
     if (!variation && analyzed) { const e = evalAt(idx); bar.set(e.cp, e.mate, board.orientation); }
     else if (!analyzed && !variation) bar.set(null);
     main.querySelector('#info').innerHTML = infoHtml();
