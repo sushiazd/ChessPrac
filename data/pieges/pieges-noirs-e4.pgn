@@ -1,0 +1,79 @@
+[Event "Trapfinder - pieges pour les Noirs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "1"]
+[White "Adversaire"]
+[Black "Moi"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. e4 d5 2. exd5 c6 3. dxc6 $2
+{ erreur jouee dans 69.3% des parties ; atteinte 41.79% ; mon score ensuite 55.0% sur 21948 parties ; eval -0.75 -> -0.76 ; trap_score 0.02695 }
+3... Qc7 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Noirs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "2"]
+[White "Adversaire"]
+[Black "Moi"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 $2
+{ erreur jouee dans 84.8% des parties ; atteinte 15.79% ; mon score ensuite 58.0% sur 43581 parties ; eval -0.29 -> -0.40 ; trap_score 0.01754 }
+4... Qb6 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Noirs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "3"]
+[White "Adversaire"]
+[Black "Moi"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. e4 d5 2. exd5 Nf6 3. Nc3 c6 4. dxc6 $2
+{ erreur jouee dans 80.0% des parties ; atteinte 23.96% ; mon score ensuite 55.6% sur 3623 parties ; eval -0.65 -> -0.87 ; trap_score 0.01624 }
+4... Qc7 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Noirs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "4"]
+[White "Adversaire"]
+[Black "Moi"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. e4 d5 2. exd5 c6 3. dxc6 e5 4. cxb7 $2
+{ erreur jouee dans 69.2% des parties ; atteinte 28.92% ; mon score ensuite 54.5% sur 194815 parties ; eval -1.33 -> -1.49 ; trap_score 0.01480 }
+4... Bxb7 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Noirs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "5"]
+[White "Adversaire"]
+[Black "Moi"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 $2
+{ erreur jouee dans 66.9% des parties ; atteinte 10.57% ; mon score ensuite 59.2% sur 3027 parties ; eval -0.29 -> -0.24 ; trap_score 0.01306 }
+5... Qb6 $1 { refutation } *

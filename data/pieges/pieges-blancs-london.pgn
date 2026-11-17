@@ -1,0 +1,191 @@
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "1"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 $2
+{ erreur jouee dans 29.6% des parties ; atteinte 29.60% ; mon score ensuite 58.2% sur 2020384 parties ; eval +0.00 -> +0.30 ; trap_score 0.03824 }
+3. Nc3 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "2"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. Nc3 Nf6 $2
+{ erreur jouee dans 34.6% des parties ; atteinte 10.25% ; mon score ensuite 66.4% sur 2060899 parties ; eval +0.27 -> +0.65 ; trap_score 0.02789 }
+4. Nb5 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "3"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. Nc3 Nf6 4. Nb5 e5 $2
+{ erreur jouee dans 75.4% des parties ; atteinte 7.73% ; mon score ensuite 62.3% sur 1313166 parties ; eval +0.64 -> +0.64 ; trap_score 0.01572 }
+5. dxe5 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "4"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. Nc3 Nf6 4. Nb5 e5 5. Bxe5 Nxe5 $2
+{ erreur jouee dans 84.5% des parties ; atteinte 6.53% ; mon score ensuite 62.9% sur 186436 parties ; eval +0.70 -> +0.72 ; trap_score 0.01413 }
+6. dxe5 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "5"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nf6 $2
+{ erreur jouee dans 23.2% des parties ; atteinte 23.18% ; mon score ensuite 53.7% sur 13087354 parties ; eval +0.00 -> +0.14 ; trap_score 0.01309 }
+3. e3 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "6"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. e3 Nf6 $2
+{ erreur jouee dans 35.3% des parties ; atteinte 10.45% ; mon score ensuite 57.0% sur 483703 parties ; eval +0.32 -> +0.29 ; trap_score 0.01149 }
+4. c4 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "7"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. e3 Bf5 $2
+{ erreur jouee dans 29.3% des parties ; atteinte 8.66% ; mon score ensuite 58.0% sur 10402 parties ; eval +0.32 -> +0.40 ; trap_score 0.01082 }
+4. h4 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "8"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. Nf3 Nf6 $2
+{ erreur jouee dans 32.9% des parties ; atteinte 9.73% ; mon score ensuite 56.7% sur 4724143 parties ; eval +0.23 -> +0.39 ; trap_score 0.01038 }
+4. e3 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "9"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 e6 $2
+{ erreur jouee dans 17.3% des parties ; atteinte 17.29% ; mon score ensuite 53.9% sur 5391551 parties ; eval +0.00 -> +0.10 ; trap_score 0.01037 }
+3. Nf3 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "10"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Nc6 3. Nc3 Nf6 4. Nb5 e5 5. Bxe5 Nxe5 6. dxe5 Ne4 $2
+{ erreur jouee dans 36.9% des parties ; atteinte 2.41% ; mon score ensuite 71.3% sur 53039 parties ; eval +0.67 -> +2.23 ; trap_score 0.01025 }
+7. Qxd5 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "11"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Bf5 $2
+{ erreur jouee dans 14.4% des parties ; atteinte 14.39% ; mon score ensuite 54.5% sur 285927 parties ; eval +0.00 -> +0.17 ; trap_score 0.00993 }
+3. c4 $1 { refutation } *
+
+[Event "Trapfinder - pieges pour les Blancs"]
+[Site "https://lichess.org"]
+[Date "????.??.??"]
+[Round "12"]
+[White "Moi"]
+[Black "Adversaire"]
+[Result "*"]
+[Annotator "trapfinder"]
+[TimeControl "blitz,rapid"]
+[WhiteElo "?"]
+[BlackElo "?"]
+
+1. d4 d5 2. Bf4 Bf5 3. e3 e6 $2
+{ erreur jouee dans 49.9% des parties ; atteinte 7.17% ; mon score ensuite 57.7% sur 19220 parties ; eval +0.10 -> +0.25 ; trap_score 0.00854 }
+4. h4 $1 { refutation } *

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.claude/
+# Stockfish (~100 Mo) depasse la limite de GitHub : lancer.bat le telecharge (tools/get_stockfish.py).
+engine/*.exe
