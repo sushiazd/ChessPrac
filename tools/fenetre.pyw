@@ -82,8 +82,10 @@ def main() -> None:
 
     config.HOME.mkdir(parents=True, exist_ok=True)
     httpd, port = serve()
+    # Ouverte en plein écran (fenêtre agrandie : la barre des tâches et les boutons de la fenêtre restent visibles).
     window = webview.create_window(TITLE, f"http://127.0.0.1:{port}/", width=1440, height=920, min_size=(960, 640),
-                                   background_color="#121211" if windows_dark() else "#f4f2ec", text_select=True)
+                                   maximized=True, background_color="#121211" if windows_dark() else "#f4f2ec",
+                                   text_select=True)
     try:
         webview.start(gui="edgechromium", icon=str(ICON), private_mode=False,
                       storage_path=str(config.HOME / "webview"))
