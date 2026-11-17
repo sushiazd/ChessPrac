@@ -30,11 +30,17 @@ CP.pages.today = async function (main) {
     drillPos ? (drillDue ? `${drillDue} position${drillDue > 1 ? 's' : ''} de ton répertoire à revoir` : 'Répertoire à jour')
       : 'Construis ton répertoire à partir de tes parties (1 clic)',
     `<a class="btn ${drillPos && drillDue ? 'btn-primary' : ''}" href="#/ouvertures?tab=${drillPos ? 'drill' : 'tree'}">${drillPos ? 'S\'entraîner' : 'Construire'}</a>`);
-  const u = t.unreviewed;
-  const step3 = step(3, !u && (act.reviews || 0) > 0, 'Revoir ta dernière partie',
-    u ? `${fmt.result(u.result)} contre ${h(u.opp_name)} (${u.opp_rating}), ${fmt.tc(u.time_control, u.time_class)}, ${fmt.rel(u.end_time)}`
-      : (act.reviews ? 'Fait' : 'Tes parties analysées apparaîtront ici'),
-    u ? `<a class="btn" href="#/partie/${encodeURIComponent(u.id)}">Revoir</a>` : '<a class="btn" href="#/parties">Parties</a>');
+  const cv = t.conversions || { due: 0, total: 0 };
+  const u = t.last_game;
+  const step3 = step((t.conversions || {}).total ? 4 : 3, !!u && !!u.reviewed, 'Revoir ta dernière partie',
+    u ? `${fmt.result(u.result)} contre ${h(u.opp_name)} (${u.opp_rating ?? '?'}), ${fmt.tc(u.time_control, u.time_class)}, ${fmt.rel(u.end_time)}${u.analyzed === 1 ? '' : ' · analyse au moment où tu l\'ouvres'}`
+      : 'Tes parties apparaîtront ici',
+    u ? `<a class="btn ${u.reviewed ? '' : 'btn-primary'}" href="#/partie/${encodeURIComponent(u.id)}">${u.reviewed ? 'Revoir encore' : 'Revoir'}</a>`
+      : '<a class="btn" href="#/parties">Parties</a>');
+  const step4 = cv.total ? step(3, cv.due === 0 && (act.conversions || 0) > 0, 'Gagner une partie gagnée',
+    cv.due ? `${cv.due} position${cv.due > 1 ? 's' : ''} où tu gagnais et n'as pas gagné : à finir contre Stockfish`
+      : 'Rien à refaire aujourd\'hui',
+    `<a class="btn ${cv.due ? 'btn-primary' : ''}" href="#/erreurs?tab=convert">${cv.due ? 'Jouer' : 'Ouvrir'}</a>`) : '';
 
   const w = s.worker || {};
   const c = s.counts || { games: 0, analyzed: 0, todo: 0 };
@@ -48,7 +54,7 @@ CP.pages.today = async function (main) {
     </div></div>
     <div class="stats-row">${ratingTile('rapid', 'Rapide')}${ratingTile('blitz', 'Blitz')}${ratingTile('bullet', 'Bullet')}${ratingTile('puzzles', 'Puzzles (record)')}</div>
     <div class="grid-2" style="align-items:start">
-      <div class="card"><div class="card-title"><h2>Séance du jour</h2></div><div class="steps">${step1}${step2}${step3}</div></div>
+      <div class="card"><div class="card-title"><h2>Séance du jour</h2></div><div class="steps">${step1}${step2}${step4}${step3}</div></div>
       <div class="stack">
         <div class="card">
           <div class="card-title"><h3>Analyse Stockfish</h3><span class="sp"></span>

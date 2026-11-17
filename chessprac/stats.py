@@ -128,6 +128,15 @@ def full(username: str, time_class: str | None = None, days: int | None = None) 
         weeks.setdefault(w, []).append(g["acc_me"])
     out["accuracy_weeks"] = [[w * 7 * 86400, round(sum(v) / len(v), 1), len(v)] for w, v in sorted(weeks.items())]
 
+    # Parties gâchées : pas gagnées alors que j'ai eu au moins 85 % de chances de gain.
+    best_wp: dict[str, float] = {}
+    for m in mv:
+        if m["wp_before"] is not None:
+            best_wp[m["game_id"]] = max(best_wp.get(m["game_id"], 0), m["wp_before"])
+    not_won = [g for g in analyzed if g["result"] != "win"]
+    thrown = [g for g in not_won if best_wp.get(g["id"], 0) >= 85]
+    out["thrown"] = {"n": len(thrown), "of": len(not_won)}
+
     n_bl = sum(1 for m in mv if m["drop"] >= BLUNDER)
     n_mi = sum(1 for m in mv if MISTAKE <= m["drop"] < BLUNDER)
     out["per_game"] = {"blunders": round(n_bl / len(analyzed), 2), "mistakes": round(n_mi / len(analyzed), 2),
@@ -150,6 +159,11 @@ def insights(s: dict) -> list[dict]:
     if pg:
         out.append({"kind": "info", "text": f"Tu fais en moyenne {fr(pg['blunders'])} gaffe(s) et {fr(pg['mistakes'])} erreur(s) "
                                             f"par partie, pour {pg['acc']:.0f} % de précision."})
+    th = s.get("thrown")
+    if th and th["of"] >= 5 and th["n"] / th["of"] >= 0.15:
+        out.append({"kind": "bad", "text": f"{th['n']} de tes {th['of']} défaites et nulles analysées étaient gagnées "
+                                           f"(85 % de chances de gain ou plus) : c'est {round(100 * th['n'] / th['of'])} % "
+                                           "de points laissés en route. Entraîne-toi dans « Erreurs > Convertir »."})
     tags = s.get("tags") or []
     total = sum(t["n"] for t in tags)
     if total >= 5:

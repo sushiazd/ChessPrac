@@ -105,3 +105,14 @@ def test_import_traps():
     assert ex and ex[0]["solution"]
     b = chess.Board(ex[0]["fen"])
     assert b.is_legal(chess.Move.from_uci(ex[0]["solution"][0]))
+
+
+def test_slow_review_does_not_advance():
+    conn = db.connect()
+    conn.execute("INSERT INTO exercises(kind, game_id, ply, fen, solution, accept, created_at, due, box, reps) "
+                 "VALUES('trap','piege:x:2',3,?,?,?,0,0,3,2)", (chess.STARTING_FEN, json.dumps(["e2e4"]), json.dumps(["e2e4"])))
+    ex_id = conn.execute("SELECT id FROM exercises WHERE game_id='piege:x:2'").fetchone()["id"]
+    r = exercises.answer(ex_id, True, secs=60)  # objectif : 15 s
+    assert r["grade"] == "slow" and r["box"] == 3
+    r = exercises.answer(ex_id, True, secs=5)
+    assert r["grade"] == "ok" and r["box"] == 4

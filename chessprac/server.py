@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import chess
 
-from . import __version__, chesscom, config, db, endgames, exercises, explorer, repertoire, stats
+from . import __version__, chesscom, config, conversions, db, endgames, exercises, explorer, repertoire, stats
 from .engine import EngineMissing
 from .worker import worker
 
@@ -136,7 +136,8 @@ def api_sync(q, body):
 
 def streak() -> int:
     rows = db.connect().execute(
-        "SELECT day FROM activity WHERE ex_done + drill_done + reviews + endgames > 0 ORDER BY day DESC").fetchall()
+        "SELECT day FROM activity WHERE ex_done + drill_done + reviews + endgames + COALESCE(conversions, 0) > 0 "
+        "ORDER BY day DESC").fetchall()
     days = {r["day"] for r in rows}
     t = time.time() - 4 * 3600
     if time.strftime("%Y-%m-%d", time.localtime(t)) not in days:
@@ -160,9 +161,8 @@ def api_today(q, body):
     conn = db.connect()
     cc = db.get_setting("cc_stats")
     act = conn.execute("SELECT * FROM activity WHERE day=?", (db.today(),)).fetchone()
-    unreviewed = conn.execute(
-        """SELECT * FROM games WHERE username=? AND analyzed=1 AND reviewed=0 ORDER BY end_time DESC LIMIT 1""",
-        (u,)).fetchone()
+    # Vraiment la dernière partie jouée (analysée ou pas encore) : l'ouvrir la fait analyser en priorité.
+    last = conn.execute("SELECT * FROM games WHERE username=? ORDER BY end_time DESC LIMIT 1", (u,)).fetchone()
     recent = conn.execute("SELECT * FROM games WHERE username=? ORDER BY end_time DESC LIMIT 8", (u,)).fetchall()
     return {
         "username": db.get_setting("display_name") or u,
@@ -171,7 +171,8 @@ def api_today(q, body):
         "drill": {"w": repertoire.drill_counts(u, "w"), "b": repertoire.drill_counts(u, "b")},
         "activity": dict(act) if act else {},
         "streak": streak(),
-        "unreviewed": game_row(unreviewed) if unreviewed else None,
+        "last_game": game_row(last) if last else None,
+        "conversions": conversions.counts(u),
         "recent": [game_row(r) for r in recent],
     }
 
@@ -275,7 +276,9 @@ def api_ex_one(q, body):
 
 @route("POST", "/api/exercises/answer")
 def api_ex_answer(q, body):
-    return exercises.answer(int(body["id"]), bool(body["ok"]), bool(body.get("first", True)))
+    secs = body.get("secs")
+    return exercises.answer(int(body["id"]), bool(body["ok"]), bool(body.get("first", True)),
+                            float(secs) if secs is not None else None)
 
 
 @route("POST", "/api/exercises/suspend")
@@ -342,6 +345,22 @@ def api_endgame_start(q, body):
 @route("POST", "/api/endgames/step")
 def api_endgame_step(q, body):
     return endgames.step(body["id"], body["fen"], body["uci"], int(body.get("user_moves", 0)))
+
+
+@route("GET", "/api/conversions")
+def api_conversions(q, body):
+    u = username()
+    return {"conversions": conversions.listing(u), "counts": conversions.counts(u)}
+
+
+@route("POST", "/api/conversions/start")
+def api_conversion_start(q, body):
+    return conversions.start(int(body["id"]))
+
+
+@route("POST", "/api/conversions/step")
+def api_conversion_step(q, body):
+    return conversions.step(int(body["id"]), body["fen"], body["uci"], int(body.get("user_moves", 0)))
 
 
 # ---------------------------------------------------------------- HTTP

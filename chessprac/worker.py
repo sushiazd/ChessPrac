@@ -1,4 +1,9 @@
-"""Travail de fond : synchro chess.com puis analyse Stockfish des parties, des plus récentes aux plus anciennes."""
+"""Travail de fond, sur deux fils indépendants :
+- la synchro chess.com, toutes les N minutes (et à la demande), même pendant une longue analyse ;
+- l'analyse Stockfish, qui prend toujours la partie la plus récente pas encore analysée : une partie qui vient
+  d'arriver passe donc devant les vieilles, sans attendre la fin du lot en cours.
+"""
+import json
 import logging
 import threading
 import time
@@ -18,22 +23,27 @@ FAST_DEEP_NODES = 400000      # vérification des erreurs (au lieu de 1 000 000)
 class Worker:
     def __init__(self):
         self.status = {"phase": "idle", "done": 0, "total": 0, "message": "", "error": None, "last_sync": None,
-                       "new_games": 0}
-        self._wake = threading.Event()
+                       "new_games": 0, "syncing": False}
+        self._wake_sync = threading.Event()
+        self._wake_analysis = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
-        self._thread = None
+        self._threads: list[threading.Thread] = []
         self.priority: list[str] = []
         self._engines: set = set()
+        self._in_progress: set[str] = set()
 
     def start(self):
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._run, name="chessprac-worker", daemon=True)
-            self._thread.start()
+        if not self._threads:
+            for target, name in ((self._sync_loop, "chessprac-sync"), (self._analysis_loop, "chessprac-analyse")):
+                t = threading.Thread(target=target, name=name, daemon=True)
+                t.start()
+                self._threads.append(t)
 
     def stop(self):
         self._stop.set()
-        self._wake.set()
+        self._wake_sync.set()
+        self._wake_analysis.set()
 
     def shutdown(self, timeout: float = 20) -> None:
         """Arrêt propre : on coupe les Stockfish (l'analyse en cours s'interrompt), puis on attend que les écritures
@@ -46,42 +56,56 @@ class Worker:
                 eng.close()
             except Exception:
                 pass
-        if self._thread is not None:
-            self._thread.join(timeout)
+        end = time.time() + timeout
+        for t in self._threads:
+            t.join(max(0.1, end - time.time()))
 
     def kick(self, game_id: str | None = None):
+        """Sans partie : synchro tout de suite. Avec une partie : elle est analysée avant les autres."""
         if game_id:
             with self._lock:
                 if game_id not in self.priority:
                     self.priority.insert(0, game_id)
-        self._wake.set()
+            self._wake_analysis.set()
+        else:
+            self._wake_sync.set()
 
     def _set(self, **kw):
         self.status.update(kw)
 
-    def _run(self):
+    # ------------------------------------------------------------ synchro
+
+    def _sync_loop(self):
         while not self._stop.is_set():
             username = db.get_setting("username")
             if username:
+                self._set(syncing=True)
+                if self.status["phase"] == "idle":
+                    self._set(phase="sync", message="Connexion à chess.com…")
                 try:
-                    self._cycle(username)
+                    self._sync(username)
                     self._set(error=None)
                 except chesscom.ChessComError as e:
                     self._set(error=str(e))
-                except EngineMissing as e:
-                    self._set(error=str(e))
                 except Exception as e:  # on ne laisse jamais mourir le fil de fond
-                    log.error("cycle: %s", traceback.format_exc())
+                    log.error("synchro : %s", traceback.format_exc())
                     self._set(error=f"Erreur : {e}")
-                self._set(phase="idle", message="")
+                self._set(syncing=False)
+                if self.status["phase"] == "sync":
+                    self._set(phase="idle", message="")
+                self._wake_analysis.set()
             wait = max(5, db.get_int("auto_sync_minutes")) * 60
-            self._wake.wait(timeout=wait)
-            self._wake.clear()
+            self._wake_sync.wait(timeout=wait)
+            self._wake_sync.clear()
 
-    def _cycle(self, username: str):
+    def _sync(self, username: str):
         conn = db.connect()
-        self._set(phase="sync", done=0, total=0, message="Connexion à chess.com…")
-        added = chesscom.sync(username, lambda d, t, m: self._set(done=d, total=t, message=m))
+
+        def progress(d, t, m):
+            if self.status["phase"] in ("idle", "sync"):
+                self._set(phase="sync", done=d, total=t, message=m)
+
+        added = chesscom.sync(username, progress)
         self._set(last_sync=time.time(), new_games=added)
         try:
             st = chesscom.player_stats(username) or {}
@@ -89,59 +113,74 @@ class Worker:
                        for k, v in st.items() if k.startswith("chess_") and isinstance(v, dict) and "last" in v}
             if "tactics" in st:
                 ratings["puzzles"] = {"rating": (st["tactics"].get("highest") or {}).get("rating"), "best": None}
-            import json
             db.set_setting("cc_stats", json.dumps(ratings))
         except chesscom.ChessComError:
             pass
         if conn.execute("SELECT COUNT(*) n FROM exercises WHERE kind='trap'").fetchone()["n"] == 0:
             exercises.import_traps(username)
         db.backup_if_due()
-        self._analyse_all(username)
 
-    def _todo(self, username: str) -> list[str]:
-        rows = db.connect().execute(
-            "SELECT id FROM games WHERE username=? AND analyzed IN (0, 2) ORDER BY analyzed DESC, end_time DESC",
-            (username.lower(),)).fetchall()
-        ids = [r["id"] for r in rows]
+    # ------------------------------------------------------------ analyse
+
+    def _remaining(self, username: str) -> int:
+        return db.connect().execute("SELECT COUNT(*) n FROM games WHERE username=? AND analyzed IN (0, 2)",
+                                    (username.lower(),)).fetchone()["n"]
+
+    def _next_game(self, username: str) -> tuple[str | None, bool]:
+        """(partie, demandée depuis l'interface ?) : la demande de l'interface, sinon la plus récente à faire."""
         with self._lock:
-            pri = [g for g in self.priority if g in ids]
-            self.priority = []
-        return pri + [g for g in ids if g not in pri]
+            while self.priority:
+                g = self.priority.pop(0)
+                row = db.connect().execute("SELECT analyzed FROM games WHERE id=?", (g,)).fetchone()
+                if row and row["analyzed"] != 1 and g not in self._in_progress:
+                    self._in_progress.add(g)
+                    return g, True
+            busy = list(self._in_progress)
+            ph = ",".join("?" * len(busy)) or "''"
+            row = db.connect().execute(
+                f"""SELECT id, analyzed FROM games WHERE username=? AND analyzed IN (0, 2) AND id NOT IN ({ph})
+                    ORDER BY analyzed DESC, end_time DESC LIMIT 1""", [username.lower(), *busy]).fetchone()
+            if row is None:
+                return None, False
+            self._in_progress.add(row["id"])
+            return row["id"], row["analyzed"] == 2
+
+    def _analysis_loop(self):
+        while not self._stop.is_set():
+            username = db.get_setting("username")
+            if username and self._remaining(username):
+                try:
+                    self._analyse_all(username)
+                except EngineMissing as e:
+                    self._set(error=str(e))
+                except Exception as e:
+                    log.error("analyse : %s", traceback.format_exc())
+                    self._set(error=f"Erreur : {e}")
+                if self.status["phase"] == "analyse":
+                    self._set(phase="idle", message="")
+            self._wake_analysis.wait(timeout=60)
+            self._wake_analysis.clear()
 
     def _analyse_all(self, username: str):
         """Analyse tout ce qui reste. Si le nombre de Stockfish change dans les réglages, on repart avec le nouveau."""
-        todo = self._todo(username)
-        total, done = len(todo), [0]
-        while todo and not self._stop.is_set():
-            self._analyse_batch(todo, total, done)
-            todo = self._todo(username)
-            total = max(total, done[0] + len(todo))
+        done = [0]
+        while self._remaining(username) and not self._stop.is_set():
+            self._analyse_batch(username, done)
 
-    def _analyse_batch(self, todo: list[str], total: int, done: list[int]):
+    def _analyse_batch(self, username: str, done: list[int]):
         nodes = db.get_int("analysis_nodes")
         deep = db.get_int("deep_nodes")
         n_workers = max(1, db.get_int("workers"))
-        self._set(phase="analyse", done=done[0], total=total,
-                  message=f"Analyse Stockfish : {done[0]} / {total} parties")
-        queue = list(todo)
-        qlock = threading.Lock()
-
-        def take():
-            """(partie, demandée depuis l'interface ?)"""
-            with qlock:
-                # Une partie demandée depuis l'interface passe devant.
-                with self._lock:
-                    while self.priority:
-                        g = self.priority.pop(0)
-                        if g in queue:
-                            queue.remove(g)
-                            return g, True
-                return (queue.pop(0), False) if queue else (None, False)
-
+        lock = threading.Lock()
         old_before = time.time() - FULL_ANALYSIS_DAYS * 86400
 
+        def show():
+            total = done[0] + self._remaining(username)
+            self._set(phase="analyse", done=done[0], total=total,
+                      message=f"Analyse Stockfish : {done[0]} / {total} parties")
+
         def limits(gid: str, asked: bool) -> tuple[int, int]:
-            """Les vieilles parties sont analysées en mode rapide (≈ 2× plus vite) : elles comptent moins pour le
+            """Les vieilles parties sont analysées en mode rapide (≈ 2,5× plus vite) : elles comptent moins pour le
             niveau actuel. Une partie ouverte dans l'interface a toujours droit à l'analyse complète."""
             if asked:
                 return nodes, deep
@@ -160,7 +199,7 @@ class Worker:
                 while not self._stop.is_set():
                     if db.get_int("workers") != n_workers:
                         return  # réglage changé : _analyse_all relance avec le bon nombre
-                    gid, asked = take()
+                    gid, asked = self._next_game(username)
                     if gid is None:
                         return
                     try:
@@ -174,9 +213,12 @@ class Worker:
                                 return
                             log.error("analyse %s: %s", gid, traceback.format_exc())
                             tx.execute("UPDATE games SET analyzed=-1 WHERE id=?", (gid,))
-                    with qlock:
+                    finally:
+                        with self._lock:
+                            self._in_progress.discard(gid)
+                    with lock:
                         done[0] += 1
-                        self._set(done=done[0], message=f"Analyse Stockfish : {done[0]} / {total} parties")
+                        show()
             finally:
                 with self._lock:
                     self._engines.discard(eng)
@@ -185,6 +227,7 @@ class Worker:
                 except Exception:
                     pass
 
+        show()
         with ThreadPoolExecutor(max_workers=n_workers) as pool:
             futures = [pool.submit(run) for _ in range(n_workers)]
             for f in futures:

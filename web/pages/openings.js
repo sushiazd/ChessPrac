@@ -29,6 +29,7 @@ CP.pages.openings = async function (main, route, alive) {
     const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     const baseFen = route.q.fen || START;
     let path = []; // [{uci, san, fen}]
+    const known = {}; // fen -> coups connus (mes parties + ajouts)
     body.innerHTML = `
       <div class="trainer">
         <div class="left">
@@ -103,7 +104,7 @@ CP.pages.openings = async function (main, route, alive) {
         </tbody></table></div>
         ${!n.mine && path.length && !rows.length ? '' : ''}
         ${n.mine && n.rep ? `<button class="btn btn-sm btn-ghost" id="unset" style="margin-top:8px">Retirer ce coup du répertoire</button>` : ''}
-        ${!n.mine && path.length ? `<p class="small muted" style="margin:10px 0 0">Joue un coup adverse sur l'échiquier qui n'est pas dans la liste pour l'ajouter à ton entraînement.</p>` : ''}`;
+        ${!n.mine ? `<p class="small muted" style="margin:10px 0 0">Joue sur l'échiquier un coup adverse absent de la liste : tu pourras l'ajouter à ton entraînement.</p>` : ''}`;
       pos.querySelectorAll('tr[data-u]').forEach((tr) => (tr.onclick = (e) => { if (!e.target.closest('.radio')) play(tr.dataset.u); }));
       pos.querySelectorAll('[data-rep]').forEach((b) => (b.onclick = async () => {
         await CP.api('/api/rep/set', { color, fen, uci: b.dataset.rep });
@@ -112,12 +113,22 @@ CP.pages.openings = async function (main, route, alive) {
       }));
       const un = pos.querySelector('#unset');
       if (un) un.onclick = async () => { await CP.api('/api/rep/set', { color, fen, uci: null }); load(); };
-      // Coup adverse joué à la main, absent de mes parties : on le garde pour l'entraînement.
+      // Coup adverse joué à la main, absent de mes parties : on propose de l'ajouter à l'entraînement (sans l'imposer).
+      known[fen] = new Set(n.moves.map((m) => m.uci));
       if (path.length) {
         const prev = path.length > 1 ? path[path.length - 2].fen : baseFen;
         const lastMv = path[path.length - 1];
         const prevMine = (prev.split(' ')[1] === 'w') === (color === 'w');
-        if (!prevMine) CP.api('/api/rep/set', { color, fen: prev, uci: lastMv.uci });
+        if (!prevMine && known[prev] && !known[prev].has(lastMv.uci)) {
+          pos.insertAdjacentHTML('beforeend', `<div class="note info" style="margin-top:12px">${h(lastMv.san)} n'apparaît pas dans tes parties.
+            <button class="btn btn-sm" id="addopp" style="margin-left:6px">L'ajouter à mon entraînement</button></div>`);
+          pos.querySelector('#addopp').onclick = async () => {
+            await CP.api('/api/rep/set', { color, fen: prev, uci: lastMv.uci });
+            known[prev].add(lastMv.uci);
+            CP.toast('Ajouté : il sera joué contre toi à l\'entraînement');
+            pos.querySelector('#addopp').parentElement.remove();
+          };
+        }
       }
     }
 

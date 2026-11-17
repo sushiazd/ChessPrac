@@ -91,7 +91,19 @@ CREATE TABLE IF NOT EXISTS activity (
     day TEXT PRIMARY KEY, ex_done INTEGER DEFAULT 0, ex_ok INTEGER DEFAULT 0,
     drill_done INTEGER DEFAULT 0, drill_ok INTEGER DEFAULT 0, reviews INTEGER DEFAULT 0, endgames INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS conversions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT UNIQUE, ply INTEGER, fen TEXT, wp REAL,
+    created_at REAL, due REAL, tries INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, last_ok INTEGER
+);
 """
+
+# Colonnes ajoutées après la première version : ajoutées aux bases existantes au démarrage.
+MIGRATIONS = [
+    "ALTER TABLE activity ADD COLUMN conversions INTEGER DEFAULT 0",
+    "ALTER TABLE attempts ADD COLUMN secs REAL",       # temps mis pour trouver
+    "ALTER TABLE exercises ADD COLUMN last_secs REAL",
+]
 
 _local = threading.local()
 _init_lock = threading.Lock()
@@ -121,6 +133,11 @@ def connect() -> sqlite3.Connection:
     with _init_lock:
         if not _initialized:
             conn.executescript(SCHEMA)
+            for sql in MIGRATIONS:
+                try:
+                    conn.execute(sql)
+                except sqlite3.OperationalError:
+                    pass  # colonne déjà là
             _initialized = True
     _local.conn = conn
     return conn
@@ -268,6 +285,6 @@ def today() -> str:
 
 
 def bump_activity(field: str, n: int = 1) -> None:
-    assert field in {"ex_done", "ex_ok", "drill_done", "drill_ok", "reviews", "endgames"}
+    assert field in {"ex_done", "ex_ok", "drill_done", "drill_ok", "reviews", "endgames", "conversions"}
     connect().execute(f"INSERT INTO activity(day, {field}) VALUES(?, ?) "
                       f"ON CONFLICT(day) DO UPDATE SET {field} = {field} + excluded.{field}", (today(), n))

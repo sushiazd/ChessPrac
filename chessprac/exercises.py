@@ -210,28 +210,59 @@ def import_traps(username: str) -> int:
 
 # ---------------------------------------------------------------- répétition espacée
 
-def schedule(box: int, ok: bool, now: float) -> tuple[int, float]:
+def schedule(box: int, ok: bool, now: float, slow: bool = False) -> tuple[int, float]:
+    if ok and slow:
+        # Trouvé, mais trop lentement : en blitz ça n'aurait pas suffi. La boîte n'avance pas, il revient plus tôt.
+        box = max(box, 1)
+        return box, now + max(1, INTERVALS[box] // 2) * DAY
     if ok:
         box = min(box + 1, len(INTERVALS) - 1)
         return box, now + INTERVALS[box] * DAY
     return 1, now + INTERVALS[1] * DAY
 
 
-def answer(ex_id: int, ok: bool, first_try: bool = True) -> dict:
+def target_secs(ex) -> int:
+    """Temps visé pour une révision : le motif doit sauter aux yeux, pas se calculer péniblement."""
+    sol = json.loads(ex["solution"]) if isinstance(ex["solution"], str) else ex["solution"]
+    secs = 15 + 10 * (len(sol) // 2)
+    if ex["kind"] == "threat":
+        secs += 15  # deux temps : la menace, puis la parade
+    return secs
+
+
+def answer(ex_id: int, ok: bool, first_try: bool = True, secs: float | None = None) -> dict:
     conn = db.connect()
     ex = conn.execute("SELECT * FROM exercises WHERE id=?", (ex_id,)).fetchone()
     if ex is None:
         return {}
     now = time.time()
-    conn.execute("INSERT INTO attempts(exercise_id, ts, ok) VALUES(?,?,?)", (ex_id, now, int(ok)))
-    if first_try:  # une 2e tentative dans la même séance ne change pas le planning
-        box, due = schedule(ex["box"], ok, now)
-        conn.execute("""UPDATE exercises SET box=?, due=?, reps=reps+1, lapses=lapses+?, last_ok=?, last_seen=?
-                        WHERE id=?""", (box, due, 0 if ok else 1, int(ok), now, ex_id))
+    target = target_secs(ex)
+    # Le chrono ne compte qu'en révision : la première fois, on prend le temps de comprendre.
+    slow = bool(ok and ex["reps"] > 0 and secs is not None and secs > target)
+    grade = "fail" if not ok else "slow" if slow else "ok"
+    with db.transaction() as tx:
+        tx.execute("INSERT INTO attempts(exercise_id, ts, ok, secs) VALUES(?,?,?,?)", (ex_id, now, int(ok), secs))
+        if first_try:  # une 2e tentative dans la même séance ne change pas le planning
+            box, due = schedule(ex["box"], ok, now, slow)
+            tx.execute("""UPDATE exercises SET box=?, due=?, reps=reps+1, lapses=lapses+?, last_ok=?, last_seen=?,
+                          last_secs=? WHERE id=?""", (box, due, 0 if ok else 1, int(ok), now, secs, ex_id))
+    if first_try:
         db.bump_activity("ex_done")
-        if ok:
+        if ok and not slow:
             db.bump_activity("ex_ok")
-    return dict(conn.execute("SELECT box, due FROM exercises WHERE id=?", (ex_id,)).fetchone())
+    out = dict(conn.execute("SELECT box, due FROM exercises WHERE id=?", (ex_id,)).fetchone())
+    return {**out, "grade": grade, "target": target}
+
+
+def weakness_weights(username: str, days: int = 90) -> dict[str, float]:
+    """Part de chaque cause dans mes erreurs récentes : la cause la plus fréquente est travaillée en premier."""
+    rows = db.connect().execute(
+        """SELECT m.tag, COUNT(*) n FROM moves m JOIN games g ON g.id = m.game_id
+           WHERE g.username=? AND g.end_time >= ? AND m.mine=1 AND m."drop" >= ? AND m.tag IS NOT NULL
+           GROUP BY m.tag""", (username.lower(), int(time.time() - days * DAY), MISTAKE)).fetchall()
+    total = sum(r["n"] for r in rows) or 1
+    # « autre » n'est pas un motif qu'on peut travailler : il ne passe jamais devant les causes identifiées.
+    return {r["tag"]: r["n"] / total for r in rows if r["tag"] != "autre"}
 
 
 def new_done_today() -> int:
@@ -277,13 +308,17 @@ def queue(username: str, game_id: str | None = None, kind: str | None = None, li
         f"""SELECT e.* FROM exercises e WHERE {flt} AND suspended=0 AND reps>0 AND due<=? {kind_sql}
             ORDER BY due LIMIT ?""", args + [now] + kind_args + [limit]).fetchall()
     n_new = max(0, min(limit - len(due), db.get_int("new_per_day") - new_done_today()))
-    # Nouveaux : d'abord les erreurs de mes parties récentes (menaces ratées en tête), les pièges ensuite.
+    # Nouveaux : les erreurs des 2 derniers mois d'abord, et parmi elles la cause d'erreur la plus fréquente chez
+    # moi en tête (si je rate surtout des menaces, je fais surtout des menaces). Les pièges d'ouverture en dernier.
+    weights = weakness_weights(username)
+    tag_case = "CASE e.tag " + " ".join(f"WHEN '{t}' THEN {w:.4f}" for t, w in weights.items()
+                                        if t.replace("-", "").isalpha()) + " ELSE 0 END" if weights else "NULL"
     new = conn.execute(
         f"""SELECT e.* FROM exercises e LEFT JOIN games g ON g.id=e.game_id
             WHERE {flt} AND e.suspended=0 AND e.reps=0 {kind_sql}
-            ORDER BY (e.kind='trap'), g.end_time DESC, CASE e.kind WHEN 'threat' THEN 0 WHEN 'punish' THEN 1 ELSE 2 END,
+            ORDER BY (e.kind='trap'), (COALESCE(g.end_time, 0) >= ?) DESC, {tag_case} DESC, g.end_time DESC,
                      e.gain DESC
-            LIMIT ?""", args + kind_args + [n_new]).fetchall()
+            LIMIT ?""", args + kind_args + [int(now - 60 * DAY), n_new]).fetchall()
     # Mélange simple : on alterne révisions et nouveautés pour ne pas finir la séance sur les plus dures.
     out, i, j = [], 0, 0
     while i < len(due) or j < len(new):
@@ -296,6 +331,7 @@ def queue(username: str, game_id: str | None = None, kind: str | None = None, li
 
 def to_json(r) -> dict:
     d = dict(r)
+    d["target"] = target_secs(r)
     for k in ("solution", "accept"):
         d[k] = json.loads(d[k]) if d.get(k) else []
     d["followup"] = json.loads(d["followup"]) if d.get("followup") else None
