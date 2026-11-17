@@ -134,13 +134,25 @@
       a.toggleAttribute('aria-current', false);
       if (cur) a.setAttribute('aria-current', 'page');
     });
-    const main = document.getElementById('main');
-    main.className = '';
+    const root = document.getElementById('main');
+    root.className = '';
+    // Chaque page dessine dans son propre conteneur : si on change de page avant la fin d'un chargement,
+    // l'ancienne page écrit dans un conteneur détaché au lieu d'écraser la nouvelle.
+    root.innerHTML = '';
+    const main = document.createElement('div');
+    root.appendChild(main);
     main.innerHTML = '<div class="spinner"></div>';
     window.scrollTo(0, 0);
     let page = r.page;
     if (!CP.status) await CP.refreshStatus();
-    if (!CP.status?.username && page !== 'settings') page = 'welcome';
+    if (!CP.status) {
+      // Serveur ou base illisible : surtout ne pas afficher « Bienvenue », on croirait avoir tout perdu.
+      main.innerHTML = `<div class="welcome card"><p class="eyebrow">Problème</p><h1>ChessPrac ne répond pas</h1>
+        <p class="lede">${CP.h(CP.statusError || 'Le serveur local ne répond pas.')} Tes données ne sont pas effacées.</p>
+        <button class="btn btn-primary" onclick="CP.status=null;CP.render()">Réessayer</button></div>`;
+      return;
+    }
+    if (!CP.status.username && page !== 'settings') page = 'welcome';
     try {
       const fn = CP.pages[page];
       const cleanup = await fn(main, r, () => id === CP.renderId);
@@ -153,7 +165,7 @@
   };
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.closest('input,select,textarea')) return;
+    if (e.target.closest && e.target.closest('input,select,textarea')) return;
     if (CP.onKey) CP.onKey(e);
   });
 
@@ -162,10 +174,13 @@
   CP.refreshStatus = async function () {
     try {
       CP.status = await CP.api('/api/status');
+      CP.statusError = null;
     } catch (e) {
+      CP.statusError = e.message;
       return;
     }
     const s = CP.status;
+    if (s.notice && !CP.noticeShown) { CP.noticeShown = true; CP.toast(s.notice, 8000); }
     const pill = document.getElementById('status');
     const w = s.worker || {};
     pill.classList.remove('hidden', 'err');

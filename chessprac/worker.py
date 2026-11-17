@@ -20,6 +20,7 @@ class Worker:
         self._lock = threading.Lock()
         self._thread = None
         self.priority: list[str] = []
+        self._engines: set = set()
 
     def start(self):
         if self._thread is None:
@@ -29,6 +30,20 @@ class Worker:
     def stop(self):
         self._stop.set()
         self._wake.set()
+
+    def shutdown(self, timeout: float = 20) -> None:
+        """Arrêt propre : on coupe les Stockfish (l'analyse en cours s'interrompt), puis on attend que les écritures
+        en base soient finies. La partie interrompue sera simplement réanalysée au prochain lancement."""
+        self.stop()
+        with self._lock:
+            engines = list(self._engines)
+        for eng in engines:
+            try:
+                eng.close()
+            except Exception:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout)
 
     def kick(self, game_id: str | None = None):
         if game_id:
@@ -76,6 +91,7 @@ class Worker:
             pass
         if conn.execute("SELECT COUNT(*) n FROM exercises WHERE kind='trap'").fetchone()["n"] == 0:
             exercises.import_traps(username)
+        db.backup_if_due()
         self._analyse_all(username)
 
     def _todo(self, username: str) -> list[str]:
@@ -118,7 +134,11 @@ class Worker:
                 return queue.pop(0) if queue else None
 
         def run():
+            if self._stop.is_set():
+                return
             eng = open_engine()
+            with self._lock:
+                self._engines.add(eng)
             try:
                 while not self._stop.is_set():
                     if db.get_int("workers") != n_workers:
@@ -130,12 +150,18 @@ class Worker:
                         analysis.analyse_game(eng, gid, nodes)
                         exercises.generate_for_game(eng, gid, deep)
                     except Exception:
-                        log.error("analyse %s: %s", gid, traceback.format_exc())
-                        db.connect().execute("UPDATE games SET analyzed=-1 WHERE id=?", (gid,))
+                        with db.transaction() as tx:
+                            if self._stop.is_set():  # appli fermée en pleine analyse : à refaire la prochaine fois
+                                tx.execute("UPDATE games SET analyzed=0 WHERE id=?", (gid,))
+                                return
+                            log.error("analyse %s: %s", gid, traceback.format_exc())
+                            tx.execute("UPDATE games SET analyzed=-1 WHERE id=?", (gid,))
                     with qlock:
                         done[0] += 1
                         self._set(done=done[0], message=f"Analyse Stockfish : {done[0]} / {total} parties")
             finally:
+                with self._lock:
+                    self._engines.discard(eng)
                 try:
                     eng.quit()
                 except Exception:

@@ -41,8 +41,13 @@ Les lancements suivants ouvrent directement la fenêtre.
   `127.0.0.1` uniquement ; `worker.py` synchronise et analyse en fond.
 - `web/` : l'interface (HTML, CSS, JS sans bibliothèque). L'échiquier est fait maison (`board.js`).
 - `tools/fenetre.pyw` : la fenêtre (pywebview / Edge WebView2). `tools/lanceur-src/` : le code du `.exe`.
-- Données : `%LOCALAPPDATA%\ChessPrac\chessprac.db` (hors de OneDrive, qui abîme les bases SQLite ouvertes).
-  Journal : `%LOCALAPPDATA%\ChessPrac\chessprac.log`.
+- Données : `%USERPROFILE%\.chessprac\chessprac.db`. Ni dans OneDrive (sa synchro abîme les bases SQLite
+  ouvertes), ni dans AppData : Windows y redirige en silence les écritures des applis empaquetées vers un dossier
+  privé, ce qui peut donner deux bases différentes. Une ancienne base dans `%LOCALAPPDATA%\ChessPrac` est reprise
+  toute seule.
+- Sauvegarde automatique chaque jour dans `.chessprac\sauvegardes` (les 7 dernières). Au démarrage, la base est
+  vérifiée ; si elle est abîmée, elle est mise de côté et la dernière bonne sauvegarde est restaurée.
+- Journal : `%USERPROFILE%\.chessprac\chessprac.log`.
 - Moteur : `engine\stockfish.exe` (Stockfish 19, GPL v3), téléchargé par `tools\get_stockfish.py` car trop
   lourd pour GitHub. Pièces : cburnett (CC BY-SA 3.0).
 - Pièges d'ouverture : `data\pieges\*.pgn` (exportés par trapfinder, dossier `Chess`).

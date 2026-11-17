@@ -3,7 +3,7 @@ CP.pages.settings = async function (main) {
   const { h } = CP;
   const s = await CP.api('/api/settings');
   const opt = (v, cur, label) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
-  main.className = 'narrow';
+  document.getElementById('main').className = 'narrow';
   main.innerHTML = `
     <div class="head"><div><p class="eyebrow">Réglages</p><h1>Réglages</h1></div></div>
     <form class="card" id="f">
@@ -32,6 +32,8 @@ CP.pages.settings = async function (main) {
     </form>
     <div class="card"><h3>À propos</h3>
       <p class="small ink2" style="margin:0">ChessPrac ${h(CP.status.version)} · tes données : <span class="mono">${h(s.db_path)}</span><br>
+        Sauvegarde automatique chaque jour (${s.backups.length} gardée${s.backups.length > 1 ? 's' : ''}${s.backups.length ? `, la dernière ${CP.fmt.rel(s.backups[0].at)}` : ''}),
+        restaurée toute seule si la base s'abîme.<br>
         Moteur : Stockfish 19 (GPL v3). Pièces : cburnett (CC BY-SA 3.0).<br>
         Outil de préparation hors partie : il ne lit jamais une partie en cours.</p></div>`;
   main.querySelector('#f').onsubmit = async (e) => {

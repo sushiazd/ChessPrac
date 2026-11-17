@@ -166,19 +166,14 @@ def sync(username: str, progress=lambda done, total, msg: None) -> int:
     for i, url in enumerate(reversed(todo)):
         progress(i, len(todo), f"Téléchargement des parties ({url[-7:]})")
         month = fetch_json(url) or {}
-        conn.execute("BEGIN")
-        try:
+        with db.transaction() as tx:
             for g in month.get("games", []):
-                if store_game(conn, username, g):
+                if store_game(tx, username, g):
                     added += 1
             # Un mois passé ne bouge plus : on ne le retélécharge pas. Le mois en cours, si.
             complete = int(not url.endswith(current) and not url.endswith(time.strftime("%Y/%m")))
-            conn.execute("INSERT INTO archives(url, username, fetched_at, complete) VALUES(?,?,?,?) "
-                         "ON CONFLICT(url) DO UPDATE SET fetched_at=excluded.fetched_at, complete=excluded.complete",
-                         (url, username, time.time(), complete))
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
+            tx.execute("INSERT INTO archives(url, username, fetched_at, complete) VALUES(?,?,?,?) "
+                       "ON CONFLICT(url) DO UPDATE SET fetched_at=excluded.fetched_at, complete=excluded.complete",
+                       (url, username, time.time(), complete))
     progress(len(todo), len(todo), "Parties à jour")
     return added

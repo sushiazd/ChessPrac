@@ -185,8 +185,13 @@ CP.pages.review = async function (main, route, alive) {
     bindInfo();
     players();
     movesEl.querySelectorAll('.mv').forEach((m) => m.classList.toggle('cur', !variation && +m.dataset.i === idx));
+    // On fait défiler la liste des coups seulement, jamais la page (scrollIntoView faisait descendre toute la page).
     const cur = movesEl.querySelector('.mv.cur');
-    if (cur) cur.scrollIntoView({ block: 'nearest' });
+    if (cur) {
+      const top = cur.offsetTop - movesEl.offsetTop, bottom = top + cur.offsetHeight;
+      if (top < movesEl.scrollTop) movesEl.scrollTop = top - 4;
+      else if (bottom > movesEl.scrollTop + movesEl.clientHeight) movesEl.scrollTop = bottom - movesEl.clientHeight + 4;
+    }
     if (analyzed) drawChart();
     if (variation) {
       clearTimeout(evalTimer);

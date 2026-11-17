@@ -108,12 +108,12 @@ def analyse_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: int) ->
         return round((arith + harm) / 2, 1)
 
     opp_color = "b" if my_color == "w" else "w"
-    conn.execute("BEGIN")
-    conn.executemany(
-        """UPDATE moves SET cp_before=?, mate_before=?, cp_after=?, mate_after=?, best_uci=?, best_san=?, pv=?,
-           wp_before=?, wp_after=?, "drop"=?, accuracy=?, cls=?, missed=?, phase=? WHERE game_id=? AND ply=?""", updates)
-    conn.execute("""UPDATE games SET analyzed=1, analyzed_at=?, acc_me=?, acc_opp=?, n_inacc=?, n_mistakes=?, n_blunders=?
-                    WHERE id=?""",
-                 (time.time(), mean(acc[my_color]), mean(acc[opp_color]), counts["inaccuracy"], counts["mistake"],
-                  counts["blunder"], game_id))
-    conn.execute("COMMIT")
+    with db.transaction() as tx:
+        tx.executemany(
+            """UPDATE moves SET cp_before=?, mate_before=?, cp_after=?, mate_after=?, best_uci=?, best_san=?, pv=?,
+               wp_before=?, wp_after=?, "drop"=?, accuracy=?, cls=?, missed=?, phase=? WHERE game_id=? AND ply=?""",
+            updates)
+        tx.execute("""UPDATE games SET analyzed=1, analyzed_at=?, acc_me=?, acc_opp=?, n_inacc=?, n_mistakes=?,
+                      n_blunders=? WHERE id=?""",
+                   (time.time(), mean(acc[my_color]), mean(acc[opp_color]), counts["inaccuracy"], counts["mistake"],
+                    counts["blunder"], game_id))

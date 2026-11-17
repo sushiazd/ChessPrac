@@ -53,10 +53,8 @@ CP.pages.today = async function (main) {
         <div class="card">
           <div class="card-title"><h3>Analyse Stockfish</h3><span class="sp"></span>
             <button class="btn btn-sm" id="sync">Synchroniser</button></div>
-          <div class="progress"><div style="width:${pct}%"></div></div>
-          <p class="small muted" style="margin:8px 0 0">${fmt.num(c.analyzed)} / ${fmt.num(c.games)} parties analysées
-            ${w.phase === 'analyse' ? ` · en cours (${w.done}/${w.total})` : ''}${w.error ? ` · <span class="bad">${h(w.error)}</span>` : ''}.
-            ${c.todo ? 'Les plus récentes d\'abord : ouvre une partie pour la faire passer devant.' : ''}</p>
+          <div class="progress"><div id="an-bar" style="width:${pct}%"></div></div>
+          <p class="small muted" style="margin:8px 0 0" id="an-text"></p>
         </div>
         <div class="card"><div class="card-title"><h3>Dernières parties</h3><span class="sp"></span><a class="small" href="#/parties">Tout voir</a></div>
           <div id="recent"></div></div>
@@ -76,9 +74,16 @@ CP.pages.today = async function (main) {
     CP.toast('Synchronisation lancée');
     setTimeout(CP.refreshStatus, 800);
   };
-  // Pendant la première analyse, la page se met à jour toute seule.
-  const timer = setInterval(() => {
-    if (CP.status && CP.status.worker && CP.status.worker.phase !== 'idle') CP.render();
-  }, 20000);
+  // Pendant l'analyse, seule la barre de progression se met à jour (la page ne bouge pas).
+  function progress() {
+    const st = CP.status || {}, wk = st.worker || {}, cc = st.counts || c;
+    const p = cc.games ? Math.round((100 * cc.analyzed) / cc.games) : 0;
+    main.querySelector('#an-bar').style.width = p + '%';
+    main.querySelector('#an-text').innerHTML = `${fmt.num(cc.analyzed)} / ${fmt.num(cc.games)} parties analysées
+      ${wk.phase === 'analyse' ? ` · en cours (${wk.done}/${wk.total})` : ''}${wk.error ? ` · <span class="bad">${h(wk.error)}</span>` : ''}.
+      ${cc.todo ? 'Les plus récentes d\'abord : ouvre une partie pour la faire passer devant.' : ''}`;
+  }
+  progress();
+  const timer = setInterval(progress, 3000);
   return () => clearInterval(timer);
 };

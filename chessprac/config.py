@@ -7,9 +7,14 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 DATA = ROOT / "data"
 TRAPS_DIR = DATA / "pieges"
-# La base vit hors de OneDrive : la synchro de OneDrive verrouille ou duplique les fichiers SQLite ouverts.
-HOME = Path(os.environ.get("CHESSPRAC_HOME") or Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "ChessPrac")
+# La base vit hors de OneDrive (sa synchro verrouille ou duplique les fichiers SQLite ouverts) et hors d'AppData :
+# Windows y redirige en silence les écritures des applis « empaquetées » (Microsoft Store, MSIX) vers un dossier
+# privé, ce qui donnait deux bases différentes selon d'où l'appli était lancée.
+HOME = Path(os.environ.get("CHESSPRAC_HOME") or Path.home() / ".chessprac")
 DB_PATH = HOME / "chessprac.db"
+# Ancien emplacement (versions du 17/11/2026) : repris automatiquement au premier lancement.
+LEGACY_DB_PATH = None if os.environ.get("CHESSPRAC_HOME") else \
+    Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "ChessPrac" / "chessprac.db"
 LOG_PATH = HOME / "chessprac.log"
 PORT = int(os.environ.get("CHESSPRAC_PORT", "47820"))
 

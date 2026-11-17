@@ -95,7 +95,8 @@ def generate_for_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: in
             threat = _threat(engine, board, best, opp_line, nodes)
             if threat:
                 tag = "menace"
-        conn.execute("UPDATE moves SET tag=? WHERE game_id=? AND ply=?", (tag, game_id, r["ply"]))
+        with db.transaction() as tx:
+            tx.execute("UPDATE moves SET tag=? WHERE game_id=? AND ply=?", (tag, game_id, r["ply"]))
         if played in accepted or gain < MIN_GAIN or len(accepted) >= 3:
             continue
         if best["wp"] < 12 or played_wp > 88:
@@ -113,11 +114,12 @@ def generate_for_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: in
         else:
             kind, fen = ("punish" if r["missed"] else "best"), r["fen_before"]
             sol, acc, followup = solution, [m.uci() for m in accepted], None
-        cur = conn.execute(
-            """INSERT OR IGNORE INTO exercises(kind, game_id, ply, fen, solution, accept, followup, played_san, best_san,
-               gain, tag, created_at, due) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (kind, game_id, r["ply"], fen, json.dumps(sol), json.dumps(acc), followup, base["played_san"],
-             base["best_san"], base["gain"], tag, time.time(), time.time()))
+        with db.transaction() as tx:
+            cur = tx.execute(
+                """INSERT OR IGNORE INTO exercises(kind, game_id, ply, fen, solution, accept, followup, played_san,
+                   best_san, gain, tag, created_at, due) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (kind, game_id, r["ply"], fen, json.dumps(sol), json.dumps(acc), followup, base["played_san"],
+                 base["best_san"], base["gain"], tag, time.time(), time.time()))
         made += cur.rowcount
     return made
 

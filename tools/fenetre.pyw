@@ -3,7 +3,7 @@
 .pyw + pythonw.exe : aucune console. Le serveur local et l'analyse Stockfish tournent dans ce même processus,
 et tout s'arrête avec la fenêtre : les Stockfish sont rattachés à un « job » Windows qui meurt avec elle, même en cas
 de plantage. Un deuxième lancement ramène simplement la fenêtre déjà ouverte au premier plan. Sans console, une
-erreur serait invisible : elle est écrite dans %LOCALAPPDATA%\\ChessPrac\\chessprac.log.
+erreur serait invisible : elle est écrite dans %USERPROFILE%\\.chessprac\\chessprac.log.
 """
 import ctypes
 import os
@@ -88,17 +88,20 @@ def main() -> None:
         webview.start(gui="edgechromium", icon=str(ICON), private_mode=False,
                       storage_path=str(config.HOME / "webview"))
     finally:
-        worker.stop()
+        # Arrêt propre : Stockfish coupé, écritures en base terminées, journal WAL vidé, puis seulement on quitte.
+        from chessprac import db
+        worker.shutdown(timeout=20)
         shared.close()
         httpd.shutdown()
-        os._exit(0)  # l'analyse en cours s'arrête net ; elle reprendra au prochain lancement
+        db.checkpoint()
+        os._exit(0)
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception:
-        home = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "ChessPrac"
+        home = Path(os.environ.get("CHESSPRAC_HOME") or Path.home() / ".chessprac")
         home.mkdir(parents=True, exist_ok=True)
         log = home / "chessprac.log"
         with open(log, "a", encoding="utf-8") as out:

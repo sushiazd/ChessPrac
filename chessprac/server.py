@@ -92,7 +92,7 @@ def api_status(q, body):
         counts = {"games": r["n"], "analyzed": r["a"] or 0, "todo": r["todo"] or 0}
     return {"version": __version__, "username": u, "display_name": db.get_setting("display_name") or u,
             "worker": worker.status, "counts": counts, "exercises": exercises.counts(u) if u else None,
-            "engine": bool(config.stockfish_path())}
+            "engine": bool(config.stockfish_path()), "notice": db.notice}
 
 
 @route("GET", "/api/settings")
@@ -101,6 +101,7 @@ def api_settings(q, body):
     out = {k: db.get_setting(k) for k in keys}
     out["has_lichess_token"] = bool(db.get_setting("lichess_token"))
     out["db_path"] = str(config.DB_PATH)
+    out["backups"] = [{"name": b.name, "at": b.stat().st_mtime} for b in db.backups()]
     out["cpu_count"] = os.cpu_count() or 0
     return out
 
@@ -113,7 +114,9 @@ def api_settings_set(q, body):
         if not prof:
             raise ApiError(f"Le compte « {name} » est introuvable sur chess.com.")
         db.set_setting("username", prof.get("username", name).lower())
-        db.set_setting("display_name", prof.get("username", name))
+        # L'API renvoie le pseudo en minuscules ; l'adresse du profil garde les majuscules (Sush1_Chess).
+        shown = (prof.get("url") or "").rstrip("/").rsplit("/", 1)[-1] or prof.get("username", name)
+        db.set_setting("display_name", shown)
         worker.kick()
     for k in ("analysis_nodes", "deep_nodes", "new_per_day", "workers", "auto_sync_minutes"):
         if k in body:
@@ -421,7 +424,7 @@ def serve(port: int = config.PORT) -> tuple[ThreadingHTTPServer, int]:
     setup_logging()
     mimetypes.add_type("text/javascript", ".js")
     mimetypes.add_type("image/svg+xml", ".svg")
-    db.connect()
+    db.prepare()
     for p in (port, 0):
         try:
             httpd = Server(("127.0.0.1", p), Handler)
