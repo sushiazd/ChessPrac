@@ -10,6 +10,10 @@ from .engine import EngineMissing, open_engine
 
 log = logging.getLogger("chessprac")
 
+FULL_ANALYSIS_DAYS = 180      # au-delà, analyse rapide
+FAST_NODES = 80000            # par position (au lieu de 200 000)
+FAST_DEEP_NODES = 400000      # vérification des erreurs (au lieu de 1 000 000)
+
 
 class Worker:
     def __init__(self):
@@ -123,6 +127,7 @@ class Worker:
         qlock = threading.Lock()
 
         def take():
+            """(partie, demandée depuis l'interface ?)"""
             with qlock:
                 # Une partie demandée depuis l'interface passe devant.
                 with self._lock:
@@ -130,8 +135,20 @@ class Worker:
                         g = self.priority.pop(0)
                         if g in queue:
                             queue.remove(g)
-                            return g
-                return queue.pop(0) if queue else None
+                            return g, True
+                return (queue.pop(0), False) if queue else (None, False)
+
+        old_before = time.time() - FULL_ANALYSIS_DAYS * 86400
+
+        def limits(gid: str, asked: bool) -> tuple[int, int]:
+            """Les vieilles parties sont analysées en mode rapide (≈ 2× plus vite) : elles comptent moins pour le
+            niveau actuel. Une partie ouverte dans l'interface a toujours droit à l'analyse complète."""
+            if asked:
+                return nodes, deep
+            row = db.connect().execute("SELECT end_time FROM games WHERE id=?", (gid,)).fetchone()
+            if row and (row["end_time"] or 0) < old_before:
+                return min(nodes, FAST_NODES), min(deep, FAST_DEEP_NODES)
+            return nodes, deep
 
         def run():
             if self._stop.is_set():
@@ -143,12 +160,13 @@ class Worker:
                 while not self._stop.is_set():
                     if db.get_int("workers") != n_workers:
                         return  # réglage changé : _analyse_all relance avec le bon nombre
-                    gid = take()
+                    gid, asked = take()
                     if gid is None:
                         return
                     try:
-                        analysis.analyse_game(eng, gid, nodes)
-                        exercises.generate_for_game(eng, gid, deep)
+                        n, d = limits(gid, asked)
+                        analysis.analyse_game(eng, gid, n)
+                        exercises.generate_for_game(eng, gid, d)
                     except Exception:
                         with db.transaction() as tx:
                             if self._stop.is_set():  # appli fermée en pleine analyse : à refaire la prochaine fois
