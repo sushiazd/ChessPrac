@@ -329,7 +329,10 @@ def api_rep_result(q, body):
 
 @route("GET", "/api/stats")
 def api_stats(q, body):
-    return stats.full(username(), time_class=q.get("tc") or None, days=int(q["days"]) if q.get("days") else None)
+    tc, days = q.get("tc") or None, int(q["days"]) if q.get("days") else None
+    out = stats.full(username(), time_class=tc, days=days)
+    out["fun"] = stats.fun(username(), time_class=tc, days=days)
+    return out
 
 
 @route("GET", "/api/endgames")

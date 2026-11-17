@@ -10,7 +10,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
-from . import analysis, chesscom, db, exercises
+from . import analysis, brilliance, chesscom, db, exercises
 from .engine import EngineMissing, open_engine
 
 log = logging.getLogger("chessprac")
@@ -118,6 +118,7 @@ class Worker:
             pass
         if conn.execute("SELECT COUNT(*) n FROM exercises WHERE kind='trap'").fetchone()["n"] == 0:
             exercises.import_traps(username)
+        brilliance.scan_pending(username)  # parties analysées avant l'arrivée des coups brillants
         db.backup_if_due()
 
     # ------------------------------------------------------------ analyse
@@ -206,6 +207,7 @@ class Worker:
                         n, d = limits(gid, asked)
                         analysis.analyse_game(eng, gid, n)
                         exercises.generate_for_game(eng, gid, d)
+                        brilliance.scan_game(gid)
                     except Exception:
                         with db.transaction() as tx:
                             if self._stop.is_set():  # appli fermée en pleine analyse : à refaire la prochaine fois

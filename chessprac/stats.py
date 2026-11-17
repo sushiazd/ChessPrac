@@ -205,3 +205,110 @@ def insights(s: dict) -> list[dict]:
         out.append({"kind": "bad", "text": f"Avec les {side}, après {o['line']}, tu ne marques que {o['score']} % "
                                            f"({o['n']} parties). À travailler dans « Ouvertures »."})
     return out
+
+
+# ---------------------------------------------------------------- statistiques « pour le plaisir »
+
+CLASS_ORDER = ["brilliant", "great", "best", "excellent", "good", "inaccuracy", "mistake", "blunder", "missed"]
+PERIODS = [(6, 12, "Le matin"), (12, 18, "L'après-midi"), (18, 23, "Le soir"), (23, 30, "La nuit")]
+
+
+def fun(username: str, time_class: str | None = None, days: int | None = None) -> dict:
+    conn = db.connect()
+    where, args = "g.username=?", [username.lower()]
+    if time_class:
+        where += " AND g.time_class=?"
+        args.append(time_class)
+    if days:
+        where += " AND g.end_time>=?"
+        args.append(int(time.time() - days * 86400))
+    games = conn.execute(f"SELECT * FROM games g WHERE {where} ORDER BY end_time", args).fetchall()
+    out: dict = {}
+
+    # Mes coups, classés comme sur chess.com.
+    counts = {k: 0 for k in CLASS_ORDER}
+    for r in conn.execute(f"""SELECT m.cls, m.special, m.missed FROM moves m JOIN games g ON g.id=m.game_id
+                              WHERE {where} AND m.mine=1 AND m.cls IS NOT NULL""", args):
+        if r["special"] in ("brilliant", "great"):
+            counts[r["special"]] += 1
+        elif r["cls"] in counts:
+            counts[r["cls"]] += 1
+        if r["missed"]:
+            counts["missed"] += 1
+    out["classes"] = counts
+
+    # Mes coups brillants, les plus récents d'abord.
+    out["brilliants"] = [dict(r) for r in conn.execute(
+        f"""SELECT m.game_id, m.ply, m.san, m.uci, m.fen_before, g.opp_name, g.opp_rating, g.end_time, g.time_class,
+                   g.time_control, g.result, g.my_color
+            FROM moves m JOIN games g ON g.id=m.game_id
+            WHERE {where} AND m.mine=1 AND m.special='brilliant' ORDER BY g.end_time DESC LIMIT 40""", args)]
+
+    # Records.
+    rec = {}
+    played = [g for g in games]
+    rec["games"] = len(played)
+    t = conn.execute(f"""SELECT COUNT(*) n, SUM(m.think) s, MAX(m.think) mx FROM moves m JOIN games g ON g.id=m.game_id
+                         WHERE {where} AND m.mine=1 AND g.time_class != 'daily'""", args).fetchone()
+    rec["moves"], rec["think_hours"] = t["n"], round((t["s"] or 0) / 3600, 1)
+    rec["longest_think"] = round(t["mx"] or 0)
+
+    def game_brief(g, **extra):
+        return {"id": g["id"], "opp_name": g["opp_name"], "opp_rating": g["opp_rating"], "end_time": g["end_time"],
+                "time_class": g["time_class"], "time_control": g["time_control"], "result": g["result"], **extra}
+
+    wins = [g for g in played if g["result"] == "win"]
+    rated_wins = [g for g in wins if g["rated"] and g["opp_rating"]]
+    if rated_wins:
+        g = max(rated_wins, key=lambda g: g["opp_rating"])
+        rec["best_win"] = game_brief(g)
+    mates = [g for g in wins if g["opp_code"] == "checkmated"]
+    if mates:
+        g = min(mates, key=lambda g: g["n_plies"])
+        rec["fastest_mate"] = game_brief(g, moves=(g["n_plies"] + 1) // 2)
+    if played:
+        g = max(played, key=lambda g: g["n_plies"] or 0)
+        rec["longest"] = game_brief(g, moves=((g["n_plies"] or 0) + 1) // 2)
+    accurate = [g for g in played if g["acc_me"] is not None and (g["n_plies"] or 0) >= 30]
+    if accurate:
+        g = max(accurate, key=lambda g: g["acc_me"])
+        rec["most_accurate"] = game_brief(g, acc=g["acc_me"])
+    rec["clean_games"] = sum(1 for g in played if g["analyzed"] == 1 and (g["n_plies"] or 0) >= 30
+                             and not (g["n_blunders"] or 0) and not (g["n_mistakes"] or 0))
+
+    # Plus belle remontée : victoire après être tombé le plus bas.
+    win_ids = [g["id"] for g in wins]
+    if win_ids:
+        ph = ",".join("?" * len(win_ids))
+        row = conn.execute(f"""SELECT game_id, MIN(wp_before) low FROM moves WHERE mine=1 AND game_id IN ({ph})
+                               AND wp_before IS NOT NULL GROUP BY game_id ORDER BY low LIMIT 1""", win_ids).fetchone()
+        if row:
+            g = next(g for g in wins if g["id"] == row["game_id"])
+            rec["comeback"] = game_brief(g, low=round(row["low"], 1))
+
+    # Plus longue série de victoires.
+    best = cur = 0
+    for g in played:
+        cur = cur + 1 if g["result"] == "win" else 0
+        best = max(best, cur)
+    rec["win_streak"] = best
+
+    # Adversaire le plus rencontré.
+    faced: dict[str, list] = {}
+    for g in played:
+        faced.setdefault(g["opp_name"], []).append(g["result"])
+    if faced:
+        name, res = max(faced.items(), key=lambda kv: len(kv[1]))
+        if len(res) >= 2:
+            rec["rival"] = {"name": name, "n": len(res), "wins": res.count("win"), "losses": res.count("loss")}
+
+    # Meilleur moment de la journée pour jouer.
+    periods = []
+    for lo, hi, label in PERIODS:
+        sel = [g for g in played if lo <= (time.localtime(g["end_time"]).tm_hour + (24 if time.localtime(g["end_time"]).tm_hour < 6 else 0)) < hi]
+        if sel:
+            score = sum({"win": 1, "draw": .5, "loss": 0}[g["result"]] for g in sel) / len(sel)
+            periods.append({"label": label, "n": len(sel), "score": round(100 * score)})
+    out["periods"] = periods
+    out["records"] = rec
+    return out

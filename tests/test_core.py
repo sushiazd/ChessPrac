@@ -116,3 +116,15 @@ def test_slow_review_does_not_advance():
     assert r["grade"] == "slow" and r["box"] == 3
     r = exercises.answer(ex_id, True, secs=5)
     assert r["grade"] == "ok" and r["box"] == 4
+
+
+def test_sacrifice_detection():
+    from chessprac.brilliance import is_sacrifice
+    # Fou sacrifié en h7 (le « cadeau grec ») : la pièce reste en prise du roi, et la suite la prend.
+    b = chess.Board("rnbq1rk1/pppn1ppp/4p3/3pP3/1b1P4/2NB1N2/PPP2PPP/R1BQK2R w KQ - 0 7")
+    assert is_sacrifice(b, chess.Move.from_uci("d3h7"), ["g8h7", "f3g5"])
+    # Un simple coup de développement n'est pas un sacrifice.
+    assert not is_sacrifice(b, chess.Move.from_uci("e1g1"), ["c7c5"])
+    # Reprendre une pièce de même valeur non plus (1.e4 e5 2.Nc3 Nf6 3.Nf3 Nxe4 4.Nxe4).
+    b2 = chess.Board("rnbqkb1r/pppp1ppp/8/4p3/4n3/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 0 4")
+    assert not is_sacrifice(b2, chess.Move.from_uci("c3e4"), ["d7d5"])

@@ -47,7 +47,7 @@
     tc(tc, cls) {
       const names = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', daily: 'Daily' };
       let t = '';
-      if (tc && !tc.includes('/')) {
+      if (tc && /^\d/.test(tc) && !tc.includes('/')) {
         const [b, inc] = tc.split('+');
         const m = +b / 60;
         const base = m >= 1 ? String(Math.round(m * 10) / 10).replace('.', ',') : `${b} s`;
@@ -56,7 +56,7 @@
       return (names[cls] || cls || '') + t;
     },
     result(r) { return { win: 'Victoire', loss: 'Défaite', draw: 'Nulle' }[r] || r; },
-    pct(v, d = 0) { return v === null || v === undefined ? '—' : `${Number(v).toFixed(d)} %`; },
+    pct(v, d = 0) { return v === null || v === undefined ? '—' : `${Number(v).toFixed(d).replace('.', ',')} %`; },
     num(v) { return v === null || v === undefined ? '—' : Number(v).toLocaleString('fr-FR'); },
     clock(s) {
       if (s === null || s === undefined) return '';
@@ -69,6 +69,8 @@
   };
 
   CP.CLS = {
+    brilliant: { label: 'Coup brillant', mark: '!!' },
+    great: { label: 'Grand coup', mark: '!' },
     best: { label: 'Meilleur coup', mark: '★' },
     excellent: { label: 'Excellent', mark: '' },
     good: { label: 'Bon', mark: '' },
@@ -118,7 +120,7 @@
     const q = {};
     new URLSearchParams(query || '').forEach((v, k) => (q[k] = v));
     const map = { '': 'today', parties: 'games', partie: 'review', erreurs: 'train', ouvertures: 'openings',
-      diagnostic: 'diag', finales: 'endgames', finale: 'endgames', reglages: 'settings' };
+      diagnostic: 'diag', statistiques: 'diag', finales: 'endgames', finale: 'endgames', reglages: 'settings' };
     return { page: map[parts[0] || ''] || 'today', id: parts[1] ? decodeURIComponent(parts[1]) : null, q, parts };
   }
   CP.route = parseRoute;

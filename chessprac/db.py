@@ -103,6 +103,8 @@ MIGRATIONS = [
     "ALTER TABLE activity ADD COLUMN conversions INTEGER DEFAULT 0",
     "ALTER TABLE attempts ADD COLUMN secs REAL",       # temps mis pour trouver
     "ALTER TABLE exercises ADD COLUMN last_secs REAL",
+    "ALTER TABLE moves ADD COLUMN special TEXT",                     # brilliant (!!) ou great (!)
+    "ALTER TABLE games ADD COLUMN specials_done INTEGER DEFAULT 0",
 ]
 
 _local = threading.local()

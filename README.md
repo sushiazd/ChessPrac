@@ -32,7 +32,7 @@ Les lancements suivants ouvrent directement la fenêtre.
 | **Parties** | Toutes tes parties, avec la précision et les gaffes. Revue coup par coup : barre d'évaluation, courbe, meilleur coup, temps passé, variantes à explorer en déplaçant les pièces. |
 | **Erreurs** | Chaque erreur vérifiée en profondeur devient un exercice : *meilleur coup*, *punir* l'erreur adverse que tu n'as pas punie, *menace* en deux temps (trouver ce que l'adversaire menaçait, puis la parade), et les *pièges* repérés par trapfinder. Répétition espacée : 1, 3, 7, 16, 35, 80 jours. En révision, il faut trouver **vite** (15 s par coup à trouver) : trouvé lentement, l'exercice revient plus tôt. Les nouveaux exercices suivent ta cause d'erreur la plus fréquente des 3 derniers mois. Onglet **Convertir** : les positions où tu gagnais sans gagner, à finir contre Stockfish. |
 | **Ouvertures** | Ton arbre d'ouvertures tiré de tes parties (score, perte moyenne, conseil de Stockfish, stats Lichess en option), ton répertoire (rempli en 1 clic), tes **fuites** (les coups qui te coûtent le plus), et l'entraînement des lignes. |
-| **Diagnostic** | Où tu perds : causes des erreurs, phase de jeu, temps de réflexion, pendule, façon de perdre, Elo, précision, ouvertures. |
+| **Statistiques** | Tes coups classés comme sur chess.com (brillants !!, grands coups !, meilleurs… gaffes), la galerie de tes coups brillants, tes records (plus belle victoire, remontée, série...), et où tu perds : causes des erreurs, phase, temps de réflexion, pendule, Elo, ouvertures. |
 | **Finales** | Les finales de base contre Stockfish : mats (dame, tour, escalier), opposition, Lucena, Philidor, dame contre pion. |
 
 ## Détails techniques

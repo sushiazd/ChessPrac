@@ -1,10 +1,49 @@
-/* Diagnostic : où et comment je perds des points. */
+/* Statistiques : mes coups (brillants compris), mes records, et où je perds des points. */
 CP.pages.diag = async function (main, route) {
   const { h, fmt } = CP;
   const tc = route.q.tc || '';
   const days = route.q.days || '';
-  const go = (p) => (location.hash = '#/diagnostic?' + CP.qs({ tc, days, ...p }));
+  const go = (p) => (location.hash = '#/statistiques?' + CP.qs({ tc, days, ...p }));
   const s = await CP.api('/api/stats?' + CP.qs({ tc, days }));
+  const f = s.fun || { classes: {}, brilliants: [], records: {}, periods: [] };
+
+  // ------------------------------------------------ mes coups, comme sur chess.com
+  const CLS_UI = [
+    ['brilliant', '!!', 'Brillants', 'var(--c-brilliant)'], ['great', '!', 'Grands coups', 'var(--c-great)'],
+    ['best', '★', 'Meilleurs', 'var(--c-best)'], ['excellent', '👍', 'Excellents', 'var(--c-exc)'],
+    ['good', '✓', 'Bons', 'var(--c-good)'], ['inaccuracy', '?!', 'Imprécisions', 'var(--c-inacc)'],
+    ['mistake', '?', 'Erreurs', 'var(--c-mistake)'], ['blunder', '??', 'Gaffes', 'var(--c-blunder)'],
+    ['missed', '✕', 'Occasions ratées', 'var(--faint)'],
+  ];
+  const classesHtml = `<div class="classes">${CLS_UI.map(([k, ic, label, col]) => `
+    <div class="cls-tile" title="${k === 'great' ? 'L\'adversaire venait de gaffer et tu as trouvé le meilleur coup pour le punir' : k === 'brilliant' ? 'Un des meilleurs coups, avec un sacrifice de matériel' : k === 'missed' ? 'L\'adversaire venait de se tromper et tu ne l\'as pas puni' : ''}">
+      <span class="ic" style="background:${col}">${ic}</span><span class="v num">${fmt.num(f.classes[k] || 0)}</span><span class="l">${label}</span></div>`).join('')}</div>`;
+
+  const brilliantsHtml = f.brilliants.length ? `<div class="brill-grid">${f.brilliants.map((b, i) => `
+    <a class="brill" href="#/partie/${encodeURIComponent(b.game_id)}?ply=${b.ply}">
+      <div class="mini" data-i="${i}"></div>
+      <div><b class="cls-brilliant">${Math.ceil(b.ply / 2)}${b.ply % 2 ? '.' : '…'} ${h(b.san)} !!</b></div>
+      <div class="small muted">contre ${h(b.opp_name)} · ${fmt.tc(b.time_control, b.time_class)} · ${fmt.date(b.end_time)}
+        · <span class="${b.result === 'win' ? 'ok' : b.result === 'loss' ? 'bad' : ''}">${fmt.result(b.result).toLowerCase()}</span></div>
+    </a>`).join('')}</div>` : '<div class="empty">Pas encore de coup brillant sur cette période. Ça viendra !</div>';
+
+  const r = f.records || {};
+  const rec = (title, value, sub, game) => `<${game ? `a href="#/partie/${encodeURIComponent(game.id)}"` : 'div'} class="record">
+    <span class="label">${title}</span><span class="v">${value}</span><span class="s">${sub || ''}</span></${game ? 'a' : 'div'}>`;
+  const vs = (g) => `contre ${h(g.opp_name)} · ${fmt.tc(g.time_control, g.time_class)} · ${fmt.date(g.end_time)}`;
+  const recordsHtml = `<div class="records">
+    ${rec('Parties jouées', fmt.num(r.games), `${fmt.num(r.moves)} coups, ${String(r.think_hours ?? 0).replace('.', ',')} h de réflexion (hors daily)`)}
+    ${r.best_win ? rec('Plus belle victoire', `${r.best_win.opp_rating} Elo`, vs(r.best_win), r.best_win) : ''}
+    ${r.comeback ? rec('Plus belle remontée', `de ${String(r.comeback.low).replace('.', ',')} % à la victoire`, vs(r.comeback), r.comeback) : ''}
+    ${r.fastest_mate ? rec('Mat le plus rapide', `en ${r.fastest_mate.moves} coups`, vs(r.fastest_mate), r.fastest_mate) : ''}
+    ${r.most_accurate ? rec('Partie la plus précise', fmt.pct(r.most_accurate.acc, 1), vs(r.most_accurate), r.most_accurate) : ''}
+    ${r.longest ? rec('Partie la plus longue', `${r.longest.moves} coups`, vs(r.longest), r.longest) : ''}
+    ${rec('Plus longue série', `${r.win_streak || 0} victoire${r.win_streak > 1 ? 's' : ''} d'affilée`, '')}
+    ${rec('Parties sans faute', fmt.num(r.clean_games || 0), 'ni erreur ni gaffe (30 coups ou plus)')}
+    ${r.rival ? rec('Ton rival', h(r.rival.name), `${r.rival.n} parties : ${r.rival.wins} V, ${r.rival.losses} D`) : ''}
+    ${rec('Plus longue réflexion', `${r.longest_think || 0} s`, 'sur un seul coup (hors daily)')}
+  </div>`;
+  const bestPeriod = f.periods.length ? f.periods.reduce((a, b) => (b.score > a.score && b.n >= 20 ? b : a)) : null;
 
   const tcPills = [['', 'Toutes'], ['rapid', 'Rapide'], ['blitz', 'Blitz'], ['bullet', 'Bullet']]
     .map(([v, l]) => `<button data-tc="${v}" aria-pressed="${tc === v}">${l}</button>`).join('');
@@ -13,12 +52,18 @@ CP.pages.diag = async function (main, route) {
   const res = s.results, tot = res.win + res.draw + res.loss;
 
   main.innerHTML = `
-    <div class="head"><div><p class="eyebrow">Diagnostic</p><h1>Où tu perds des points</h1>
+    <div class="head"><div><p class="eyebrow">Statistiques</p><h1>Tes statistiques</h1>
       <p class="lede">${fmt.num(s.games)} parties, dont ${fmt.num(s.analyzed)} analysées par Stockfish.
         ${s.analyzed < s.games ? 'Les chiffres se précisent au fil de l\'analyse.' : ''}</p></div>
       <div class="stack" style="gap:8px;align-items:flex-end"><div class="pills" id="tcp">${tcPills}</div><div class="pills" id="dp">${dayPills}</div></div></div>
-    ${s.insights.length ? `<div class="card" style="margin-bottom:18px"><div class="card-title"><h2>À retenir</h2></div>
-      <div class="insights">${s.insights.map((i) => `<div class="insight ${i.kind}"><i></i><div>${h(i.text)}</div></div>`).join('')}</div></div>` : ''}
+    <div class="card" style="margin-bottom:18px"><div class="card-title"><h2>Tes coups</h2></div>${classesHtml}</div>
+    <div class="card" style="margin-bottom:18px"><div class="card-title"><h2>Tes coups brillants</h2>
+      <span class="chip" style="background:var(--c-brilliant);color:#fff;border:0">${f.brilliants.length}</span></div>
+      <p class="small muted" style="margin:-4px 0 14px">Un des meilleurs coups, qui sacrifie du matériel. Clique pour revoir le moment.</p>
+      ${brilliantsHtml}</div>
+    <div class="card" style="margin-bottom:18px"><div class="card-title"><h2>Records</h2></div>${recordsHtml}
+      ${bestPeriod ? `<p class="small ink2" style="margin:14px 0 0">Ton meilleur moment pour jouer : <b>${bestPeriod.label.toLowerCase()}</b> (${bestPeriod.score} % de score sur ${bestPeriod.n} parties).
+        ${f.periods.map((p) => `${p.label} ${p.score} %`).join(' · ')}</p>` : ''}</div>
     <div class="stats-row">
       <div class="stat"><div class="label">Score</div><div class="v">${tot ? Math.round((100 * (res.win + res.draw / 2)) / tot) : '—'} %</div>
         <div class="s">${res.win} V · ${res.draw} N · ${res.loss} D</div></div>
@@ -48,6 +93,13 @@ CP.pages.diag = async function (main, route) {
         <td class="r num ${o.score <= 40 ? 'bad' : o.score >= 60 ? 'ok' : ''}">${o.score} %</td>
         <td class="r num">${fmt.pct(o.acc)}</td><td class="r num">${o.blunders ?? '—'}</td></tr>`).join('')}
       </tbody></table></div></div>`;
+
+  // Mini-échiquiers des coups brillants : la position juste avant, avec le coup en flèche.
+  main.querySelectorAll('.brill .mini').forEach((el) => {
+    const b = f.brilliants[+el.dataset.i];
+    const board = new Board(el, { fen: b.fen_before, orientation: b.my_color, interactive: false, coords: false });
+    board.setArrows([{ from: b.uci.slice(0, 2), to: b.uci.slice(2, 4), color: 'var(--c-brilliant)', opacity: 0.9 }]);
+  });
 
   function scoreOf(c) { const n = c.win + c.draw + c.loss; return n ? Math.round((100 * (c.win + c.draw / 2)) / n) + ' %' : '—'; }
 

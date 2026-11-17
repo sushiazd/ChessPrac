@@ -63,8 +63,9 @@ CP.pages.review = async function (main, route, alive) {
     for (const j of [i, i + 1]) {
       const p = plies[j];
       if (!p) { html += '<div class="mv"></div>'; continue; }
-      const c = CP.CLS[p.cls] || {};
-      const mk = c.mark && ['inaccuracy', 'mistake', 'blunder'].includes(p.cls) ? `<span class="mark ${p.cls}">${c.mark}</span>` : '';
+      const k = p.special || p.cls;
+      const c = CP.CLS[k] || {};
+      const mk = c.mark && ['brilliant', 'great', 'inaccuracy', 'mistake', 'blunder'].includes(k) ? `<span class="mark ${k}">${c.mark}</span>` : '';
       html += `<div class="mv" data-i="${j + 1}"><span>${h(p.san)}</span>${mk}</div>`;
     }
   }
@@ -72,11 +73,15 @@ CP.pages.review = async function (main, route, alive) {
   movesEl.querySelectorAll('.mv[data-i]').forEach((el) => (el.onclick = () => go(+el.dataset.i)));
 
   // ------------------------------------------------ moments clés
-  const moments = plies.map((p, i) => ({ p, i: i + 1 })).filter(({ p }) => p.mine && (['mistake', 'blunder'].includes(p.cls) || p.missed));
+  const moments = plies.map((p, i) => ({ p, i: i + 1 }))
+    .filter(({ p }) => p.mine && (['mistake', 'blunder'].includes(p.cls) || p.missed || p.special === 'brilliant'));
   const mEl = main.querySelector('#moments');
   if (!analyzed) main.querySelector('#moments-card').classList.add('hidden');
   else if (!moments.length) mEl.innerHTML = '<span class="muted small">Aucune erreur nette de ta part. Belle partie.</span>';
-  else mEl.innerHTML = moments.map(({ p, i }) => `
+  else mEl.innerHTML = moments.map(({ p, i }) => p.special === 'brilliant' ? `
+      <button data-i="${i}"><span class="mark brilliant">!!</span>
+        <span class="num">${Math.ceil(i / 2)}${i % 2 ? '.' : '…'} ${h(p.san)}</span><span class="sp"></span>
+        <span class="small cls-brilliant">Coup brillant</span></button>` : `
       <button data-i="${i}"><span class="mark ${p.cls === 'blunder' ? 'blunder' : 'mistake'}">${p.cls === 'blunder' ? '??' : '?'}</span>
         <span class="num">${Math.ceil(i / 2)}${i % 2 ? '.' : '…'} ${h(p.san)}</span>
         <span class="muted">−${Math.round(p.drop)} %</span><span class="sp"></span>
@@ -113,10 +118,13 @@ CP.pages.review = async function (main, route, alive) {
     const num = `${Math.ceil(idx / 2)}${idx % 2 ? '.' : '…'}`;
     if (!analyzed) return `<p class="label">${num}</p><p class="big">${who} ${h(p.san)}</p>
       <p class="small muted">${p.think !== null ? 'Temps : ' + fmt.think(p.think) : ''}</p>`;
-    const c = CP.CLS[p.cls] || { label: '' };
+    const k = p.special || p.cls;
+    const c = CP.CLS[k] || { label: '' };
     const bad = ['inaccuracy', 'mistake', 'blunder'].includes(p.cls);
     let out = `<p class="label">${num} ${p.mine ? 'Ton coup' : 'Coup adverse'}${p.think !== null ? ' · ' + fmt.think(p.think) : ''}</p>
-      <p class="big">${who} ${h(p.san)} <span class="cls-${p.cls}">· ${c.label}</span></p>`;
+      <p class="big">${who} ${h(p.san)}${k === 'brilliant' ? ' !!' : k === 'great' ? ' !' : ''} <span class="cls-${k}">· ${c.label}</span></p>`;
+    if (k === 'brilliant') out += `<p class="small cls-brilliant" style="margin:2px 0 8px">Un sacrifice, et c'est un des meilleurs coups de la position.</p>`;
+    if (k === 'great') out += `<p class="small cls-great" style="margin:2px 0 8px">L'adversaire venait de gaffer, et tu as trouvé le coup qui le punit.</p>`;
     if (p.drop >= 2) out += `<p class="small ink2" style="margin:2px 0 8px">Chances de gain : ${Math.round(p.wp_before)} % → ${Math.round(p.wp_after)} % (−${Math.round(p.drop)} %)</p>`;
     if (p.missed) out += `<p class="small warn" style="margin:2px 0 8px">L'adversaire venait de se tromper : il y avait une occasion à saisir.</p>`;
     if (p.tag && bad) out += `<p style="margin:0 0 8px"><span class="chip warnc">${h(CP.TAGS[p.tag] || p.tag)}</span></p>`;
@@ -209,7 +217,10 @@ CP.pages.review = async function (main, route, alive) {
   function drawChart() {
     const cps = fens.map((_, i) => evalAt(i).cp);
     const marks = {};
-    plies.forEach((p, i) => { if (p.mine && ['mistake', 'blunder'].includes(p.cls)) marks[i + 1] = p.cls; });
+    plies.forEach((p, i) => {
+      if (p.mine && p.special === 'brilliant') marks[i + 1] = 'brilliant';
+      else if (p.mine && ['mistake', 'blunder'].includes(p.cls)) marks[i + 1] = p.cls;
+    });
     Charts.evalChart(main.querySelector('#chart'), cps, { current: variation ? variation.base : idx, marks, onClick: (i) => go(i), orientation: board.orientation });
   }
 
