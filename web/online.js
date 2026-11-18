@@ -1,11 +1,12 @@
 /* Version en ligne (chessprac.….workers.dev/pseudo) : les mêmes pages, en lecture seule, nourries par les analyses
    envoyées depuis l'appli. Rien d'entraînement ici : exercices, révisions et répertoire restent sur le PC.
-   Dans l'appli locale (127.0.0.1), ce fichier ne fait rien. */
+   */
 (function () {
   const CP = window.CP;
   const params = new URLSearchParams(location.search);
-  const local = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
-  if (local && !params.get('cloud')) return; // appli normale
+  // Seulement sur le service en ligne (….workers.dev), ou pour le tester en local avec ?cloud=adresse.
+  // Ailleurs (appli Windows, version navigateur sur GitHub Pages), ce fichier ne fait rien.
+  if (!/\.workers\.dev$/.test(location.hostname) && !params.get('cloud')) return;
   const seg = location.pathname.split('/').filter(Boolean);
   const base = (params.get('cloud') || '').replace(/\/$/, '');
   const account = seg.length === 1 && !seg[0].includes('.') ? seg[0].toLowerCase() : null;

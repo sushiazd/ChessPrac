@@ -3,6 +3,12 @@ CP.pages.settings = async function (main) {
   const { h } = CP;
   const s = await CP.api('/api/settings');
   const opt = (v, cur, label) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
+  const web = s.mode === 'browser';   // version 100 % navigateur (GitHub Pages) ou appli Windows
+  const depth = web
+    ? `${opt(25000, s.analysis_nodes, 'Rapide (2× plus vite, un peu moins précise)')}${opt(50000, s.analysis_nodes, 'Normale (conseillé)')}${opt(120000, s.analysis_nodes, 'Profonde (2× plus lent)')}`
+    : `${opt(100000, s.analysis_nodes, 'Rapide (2× plus vite, un peu moins précise)')}
+          ${opt(200000, s.analysis_nodes, 'Normale (conseillé)')}${opt(500000, s.analysis_nodes, 'Profonde (2× plus lent)')}`;
+  const nWorkers = (web ? [1, 2, 3, 4, 6, 8] : [1, 2, 3, 4, 6, 8, 12, 16]).map((v) => opt(v, s.workers, v)).join('');
   document.getElementById('main').className = 'narrow';
   main.innerHTML = `
     <div class="head"><div><p class="eyebrow">Réglages</p><h1>Réglages</h1></div></div>
@@ -14,13 +20,12 @@ CP.pages.settings = async function (main) {
         <select class="input" name="new_per_day">${[5, 10, 15, 20, 30, 50].map((v) => opt(v, s.new_per_day, v)).join('')}</select>
         <small>Les révisions (exercices déjà vus) ne sont jamais limitées.</small></label>
       <label class="field"><span>Force de l'analyse de fond</span>
-        <select class="input" name="analysis_nodes">${opt(100000, s.analysis_nodes, 'Rapide (2× plus vite, un peu moins précise)')}
-          ${opt(200000, s.analysis_nodes, 'Normale (conseillé)')}${opt(500000, s.analysis_nodes, 'Profonde (2× plus lent)')}</select>
+        <select class="input" name="analysis_nodes">${depth}</select>
         <small>Chaque erreur est de toute façon revérifiée plus en profondeur avant de devenir un exercice.</small></label>
       <label class="field"><span>Stockfish en parallèle</span>
-        <select class="input" name="workers">${[1, 2, 3, 4, 6, 8, 12, 16].map((v) => opt(v, s.workers, v)).join('')}</select>
+        <select class="input" name="workers">${nWorkers}</select>
         <small>Plus = analyse plus rapide, mais le PC travaille plus (chaque Stockfish prend un cœur du processeur
-          et 64 Mo de mémoire). Ton PC a ${s.cpu_count} cœurs logiques. Le changement s'applique tout de suite.</small></label>
+          et ${web ? 32 : 64} Mo de mémoire). Ton PC a ${s.cpu_count} cœurs logiques. Le changement s'applique tout de suite.</small></label>
       <label class="field"><span>Synchro automatique</span>
         <select class="input" name="auto_sync_minutes">${opt(15, s.auto_sync_minutes, 'Toutes les 15 min')}${opt(30, s.auto_sync_minutes, 'Toutes les 30 min')}
           ${opt(60, s.auto_sync_minutes, 'Toutes les heures')}${opt(240, s.auto_sync_minutes, 'Toutes les 4 h')}</select></label>
@@ -33,7 +38,7 @@ CP.pages.settings = async function (main) {
     <form class="card" id="cf"><h3>En ligne</h3>
       <p class="small ink2" style="margin:0 0 12px">Tes parties analysées et tes statistiques sont aussi consultables de partout
         (téléphone, tablette), sans rien réanalyser${s.cloud.page ? ` : <a href="${h(s.cloud.page)}" target="_blank" rel="noopener">${h(s.cloud.page.replace(/^https?:\/\//, ''))}</a>` : ''}.
-        Tout le monde peut les voir. L'entraînement (exercices, révisions, répertoire) reste sur ce PC.<br>
+        Tout le monde peut les voir. L'entraînement (exercices, révisions, répertoire) reste ${web ? 'dans ce navigateur' : 'sur ce PC'}.<br>
         Une partie déjà analysée en ligne (par ton adversaire, ou sur un autre appareil) est reprise au lieu d'être réanalysée.</p>
       <div id="cloud-state" class="small" style="margin-bottom:12px"></div>
       <label class="field"><span>Clé d'envoi</span>
@@ -41,17 +46,29 @@ CP.pages.settings = async function (main) {
         <small>Sans clé, l'appli reprend les analyses en ligne mais n'envoie rien.</small></label>
       <div class="row"><button class="btn">Enregistrer la clé</button><span id="cmsg" class="small"></span></div>
     </form>
+    ${web ? `<div class="card" id="data"><h3>Tes données</h3>
+      <p class="small ink2" style="margin-top:0">Tout reste dans ce navigateur (stockage du site), sauf ce que tu envoies en ligne avec la clé (parties analysées et stats, jamais l'entraînement).
+        Vider les données du site, changer de navigateur ou d'appareil les efface. Pour les garder ou les déplacer,
+        exporte un fichier de sauvegarde et réimporte-le ailleurs.
+        ${s.last_save ? `Dernière écriture ${CP.fmt.rel(s.last_save)}.` : ''}
+        ${s.save_error ? `<span class="bad">Écriture impossible : ${h(s.save_error)}</span>` : ''}</p>
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <button class="btn" id="exp" type="button">Exporter mes données</button>
+        <button class="btn" id="imp" type="button">Importer une sauvegarde</button>
+        <button class="btn" id="wipe" type="button">Tout effacer</button>
+        <input type="file" id="impf" accept=".db,.sqlite,application/octet-stream" hidden>
+        <span id="dmsg" class="small"></span></div></div>` : ''}
     <div class="card"><h3>À propos</h3>
       <p class="small ink2" style="margin:0">ChessPrac ${h(CP.status.version)} · tes données : <span class="mono">${h(s.db_path)}</span><br>
-        Sauvegarde automatique chaque jour (${s.backups.length} gardée${s.backups.length > 1 ? 's' : ''}${s.backups.length ? `, la dernière ${CP.fmt.rel(s.backups[0].at)}` : ''}),
-        restaurée toute seule si la base s'abîme.<br>
+        ${web ? 'Stockfish tourne dans ton navigateur (WebAssembly, version « lite »).<br>' : `Sauvegarde automatique chaque jour (${s.backups.length} gardée${s.backups.length > 1 ? 's' : ''}${s.backups.length ? `, la dernière ${CP.fmt.rel(s.backups[0].at)}` : ''}),
+        restaurée toute seule si la base s'abîme.<br>`}
         Moteur : Stockfish 19 (GPL v3). Pièces : cburnett (CC BY-SA 3.0).<br>
         Outil de préparation hors partie : il ne lit jamais une partie en cours.</p></div>`;
   const cloudState = () => {
     const c = (CP.status.worker || {}).cloud || {};
     const el = main.querySelector('#cloud-state');
     if (!el) return;
-    if (!s.cloud.home) el.innerHTML = '<span class="muted">Désactivé sur ce PC.</span>';
+    if (!s.cloud.home) el.innerHTML = '<span class="muted">Désactivé ici.</span>';
     else if (!s.cloud.has_key) el.innerHTML = '<span class="muted">Pas de clé : rien n’est envoyé.</span>';
     else if (c.error) el.innerHTML = `<span class="bad">${h(c.error)}</span>`;
     else el.innerHTML = `<b>${CP.fmt.num(c.online)}</b> partie${c.online > 1 ? 's' : ''} en ligne${c.pending ? ` · ${CP.fmt.num(c.pending)} à envoyer` : ''}${c.sending ? ' · envoi en cours…' : c.last ? ` · dernier envoi ${CP.fmt.rel(c.last)}` : ''}`;
@@ -68,6 +85,39 @@ CP.pages.settings = async function (main) {
     e.target.cloud_key.value = '';
     msg.innerHTML = '<span class="ok">Clé enregistrée, l’envoi démarre.</span>';
   };
+  if (web) {
+    const dmsg = main.querySelector('#dmsg');
+    main.querySelector('#exp').onclick = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(CP.local.exportData());
+      a.download = `chessprac-${new Date().toISOString().slice(0, 10)}.db`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    };
+    const f = main.querySelector('#impf');
+    main.querySelector('#imp').onclick = () => f.click();
+    f.onchange = async () => {
+      if (!f.files[0]) return;
+      if (!confirm('Remplacer toutes les données de ce navigateur par cette sauvegarde ?')) return;
+      dmsg.textContent = 'Import…';
+      try {
+        await CP.local.importData(f.files[0]);
+        CP.status = null;
+        location.hash = '#/';
+        CP.render();
+        CP.toast('Sauvegarde importée');
+      } catch (err) {
+        dmsg.innerHTML = `<span class="bad">Fichier refusé : ${h(err.message)}</span>`;
+      }
+    };
+    main.querySelector('#wipe').onclick = async () => {
+      if (!confirm('Effacer toutes les données de ce navigateur (parties, analyses, exercices) ? Tu peux les retélécharger depuis chess.com, mais pas les ré-analyser sans refaire le travail.')) return;
+      await CP.local.eraseData();
+      CP.status = null;
+      location.hash = '#/';
+      CP.render();
+    };
+  }
   main.querySelector('#f').onsubmit = async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target).entries());

@@ -24,6 +24,24 @@ d'ESIRPRAC, comme osu! progression.
 
 Les lancements suivants ouvrent directement la fenêtre.
 
+## Version web (GitHub Pages)
+
+La même interface existe en version **100 % navigateur**, sans rien installer : Stockfish 19 (WebAssembly), SQLite
+(sql.js) et les parties chess.com (API publique) tournent directement dans l'onglet. Rien n'est envoyé à un serveur, sauf
+les parties analysées et les stats si tu mets la clé d'envoi (voir « En ligne »).
+
+- Adresse : `https://<ton-compte>.github.io/ChessPrac/` (publiée par `.github/workflows/pages.yml`).
+- **À faire une fois** : dans le dépôt, *Settings > Pages > Build and deployment > Source : GitHub Actions*, puis
+  fusionner dans `main` (le workflow publie le dossier `web/`). Il peut aussi se lancer à la main (*Actions > Publier sur
+  GitHub Pages > Run workflow*).
+- Les données (parties, analyses, exercices) sont gardées dans le stockage du navigateur. Les vider, ou changer de
+  navigateur, les efface : *Réglages > Tes données* permet d'**exporter** un fichier de sauvegarde et de le réimporter.
+- L'analyse tourne dans l'onglet (garde-le ouvert) avec le moteur « lite » à un seul fil et moins de nœuds par position
+  que sur Windows : compte plusieurs heures pour 1000 parties, les plus récentes d'abord. L'appli Windows reste la
+  version la plus rapide et la plus précise.
+- Même code d'interface (`web/`) pour les deux versions : au démarrage, `app.js` regarde s'il y a un serveur local
+  (`/api/status`) ; sinon il charge le moteur navigateur `web/browser/`.
+
 ## Ce qu'il y a dedans
 
 | Page | À quoi ça sert |
@@ -54,6 +72,11 @@ lecture : l'entraînement (exercices, révisions, répertoire, finales) reste su
 - `chessprac/` : le moteur en Python (python-chess + Stockfish). `server.py` sert l'interface et une API JSON sur
   `127.0.0.1` uniquement ; `worker.py` synchronise et analyse en fond.
 - `web/` : l'interface (HTML, CSS, JS sans bibliothèque). L'échiquier est fait maison (`board.js`).
+- `web/browser/` : le moteur en JavaScript pour la version web, un port module par module de `chessprac/`
+  (`api.js` = routes de `server.py`, `bg.js` = `worker.py`, `analysis.js`, `exercises.js`, `repertoire.js`...), avec
+  `vendor/` (Stockfish.js, chess.js, sql.js, voir `vendor/LICENSES.md`) et `data/` (théorie d'ouvertures et pièges, générés
+  par `python tools/build_browser_data.py` à partir de `data/`). Une modification de la logique dans `chessprac/` est à
+  reporter dans le module JS correspondant.
 - `tools/fenetre.pyw` : la fenêtre (pywebview / Edge WebView2). `tools/lanceur-src/` : le code du `.exe`.
 - Données : `%USERPROFILE%\.chessprac\chessprac.db`. Ni dans OneDrive (sa synchro abîme les bases SQLite
   ouvertes), ni dans AppData : Windows y redirige en silence les écritures des applis empaquetées vers un dossier

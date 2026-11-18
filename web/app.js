@@ -8,7 +8,22 @@
     renderId: 0,
   });
 
+  /* Deux façons de parler au moteur : le serveur Python local (appli Windows), ou, quand il n'y en a pas
+     (GitHub Pages), le moteur 100 % navigateur de browser/api.js. CP.boot() choisit. */
+  CP.local = null;
+
   CP.api = async function (path, body) {
+    if (CP.local) {
+      const [p, qs] = path.split('?');
+      const q = Object.fromEntries(new URLSearchParams(qs || ''));
+      try {
+        return await CP.local.handle(body === undefined ? 'GET' : 'POST', p, q, body);
+      } catch (e) {
+        const err = new Error(e.message);
+        err.status = e.code || 500;
+        throw err;
+      }
+    }
     const opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
     const r = await fetch(path, opt);
     let data = null;
@@ -250,6 +265,29 @@
     return s;
   };
 
+  CP.boot = async function () {
+    if (CP.online) return; // version en ligne en lecture (online.js) : ni serveur ni moteur
+    let server = false;
+    try {
+      const r = await fetch('api/status', { cache: 'no-store' });
+      server = r.ok && (r.headers.get('content-type') || '').includes('json');
+    } catch (e) { /* pas de serveur : mode navigateur */ }
+    if (server) return;
+    const main = document.getElementById('main');
+    main.innerHTML = '<div class="spinner"></div><p class="small muted" style="text-align:center">Chargement du moteur…</p>';
+    try {
+      const api = await import('./browser/api.js');
+      await api.init();
+      CP.local = api;
+    } catch (e) {
+      console.error(e);
+      main.innerHTML = `<div class="welcome card"><p class="eyebrow">Problème</p><h1>ChessPrac ne démarre pas</h1>
+        <p class="lede">${CP.h(e.message || e)} Ce navigateur est peut-être trop ancien, ou il bloque le stockage des données
+        (navigation privée ?). Essaie avec un navigateur récent (Chrome, Edge, Firefox, Safari).</p></div>`;
+      throw e;
+    }
+  };
+
   CP.start = function () {
     window.addEventListener('hashchange', () => CP.render());
     document.getElementById('status').addEventListener('click', async () => {
@@ -276,13 +314,14 @@
         <p class="eyebrow">Bienvenue</p>
         <h1>ChessPrac</h1>
         <p class="lede">Écris ton pseudo chess.com. L'outil récupère tes parties publiques (sans mot de passe), les analyse
-          avec Stockfish sur ton PC, puis transforme tes erreurs en exercices et ton jeu d'ouverture en répertoire à réviser.</p>
+          avec Stockfish ${CP.local ? 'directement dans ton navigateur' : 'sur ton PC'}, puis transforme tes erreurs en exercices et ton jeu d'ouverture en répertoire à réviser.</p>
         <form id="wf" class="row">
           <input class="input" id="wu" style="flex:1" placeholder="Ton pseudo chess.com" required autocomplete="off" spellcheck="false">
           <button class="btn btn-primary">Commencer</button>
         </form>
-        <p class="small muted" id="werr" style="margin:12px 0 0">La première analyse prend du temps (environ 1 h pour 1000 parties),
-          mais tes parties les plus récentes sont prêtes en quelques minutes.</p>
+        <p class="small muted" id="werr" style="margin:12px 0 0">${CP.local
+    ? "La première analyse prend du temps (compte plusieurs heures pour 1000 parties : garde l'onglet ouvert), mais tes parties les plus récentes sont prêtes en quelques minutes. Ton entraînement reste dans ce navigateur. Une partie déjà analysée en ligne (par ton adversaire ou sur un autre appareil) est reprise au lieu d'être réanalysée."
+    : 'La première analyse prend du temps (environ 1 h pour 1000 parties), mais tes parties les plus récentes sont prêtes en quelques minutes.'}</p>
       </div>`;
     main.querySelector('#wf').onsubmit = async (e) => {
       e.preventDefault();

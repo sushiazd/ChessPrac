@@ -41,6 +41,6 @@
 <script src="pages/diag.js"></script>
 <script src="pages/endgames.js"></script>
 <script src="pages/settings.js"></script>
-<script>CP.start();</script>
+<script>CP.boot().then(CP.start).catch((e) => console.error(e));</script>
 </body>
 </html>
