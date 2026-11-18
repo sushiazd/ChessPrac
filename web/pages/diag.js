@@ -52,7 +52,7 @@ CP.pages.diag = async function (main, route) {
   const res = s.results, tot = res.win + res.draw + res.loss;
 
   main.innerHTML = `
-    <div class="head"><div><p class="eyebrow">Statistiques</p><h1>Tes statistiques</h1>
+    <div class="head"><div><p class="eyebrow">Statistiques</p><h1>${CP.online ? `Les statistiques de ${h(CP.status.display_name)}` : 'Tes statistiques'}</h1>
       <p class="lede">${fmt.num(s.games)} parties, dont ${fmt.num(s.analyzed)} analysées par Stockfish.
         ${s.analyzed < s.games ? 'Les chiffres se précisent au fil de l\'analyse.' : ''}</p></div>
       <div class="stack" style="gap:8px;align-items:flex-end"><div class="pills" id="tcp">${tcPills}</div><div class="pills" id="dp">${dayPills}</div></div></div>

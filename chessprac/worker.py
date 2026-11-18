@@ -1,7 +1,9 @@
 """Travail de fond, sur deux fils indépendants :
 - la synchro chess.com, toutes les N minutes (et à la demande), même pendant une longue analyse ;
 - l'analyse Stockfish, qui prend toujours la partie la plus récente pas encore analysée : une partie qui vient
-  d'arriver passe donc devant les vieilles, sans attendre la fin du lot en cours.
+  d'arriver passe donc devant les vieilles, sans attendre la fin du lot en cours. Une partie déjà analysée en ligne
+  (par l'adversaire, ou sur un autre appareil) est reprise telle quelle : il ne reste qu'à en tirer les exercices ;
+- l'envoi en ligne des parties analysées et des stats (s'il y a la clé), sur un troisième fil.
 """
 import json
 import logging
@@ -10,7 +12,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
-from . import analysis, brilliance, chesscom, db, exercises
+from . import analysis, brilliance, chesscom, cloud, db, exercises
 from .engine import EngineMissing, open_engine
 
 log = logging.getLogger("chessprac")
@@ -18,14 +20,17 @@ log = logging.getLogger("chessprac")
 FULL_ANALYSIS_DAYS = 180      # au-delà, analyse rapide
 FAST_NODES = 80000            # par position (au lieu de 200 000)
 FAST_DEEP_NODES = 400000      # vérification des erreurs (au lieu de 1 000 000)
+PUSH_EVERY = 10               # parties analysées entre deux envois en ligne
 
 
 class Worker:
     def __init__(self):
         self.status = {"phase": "idle", "done": 0, "total": 0, "message": "", "error": None, "last_sync": None,
-                       "new_games": 0, "syncing": False}
+                       "new_games": 0, "syncing": False,
+                       "cloud": {"online": 0, "pending": 0, "error": None, "last": None, "sending": False}}
         self._wake_sync = threading.Event()
         self._wake_analysis = threading.Event()
+        self._wake_cloud = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._threads: list[threading.Thread] = []
@@ -35,7 +40,8 @@ class Worker:
 
     def start(self):
         if not self._threads:
-            for target, name in ((self._sync_loop, "chessprac-sync"), (self._analysis_loop, "chessprac-analyse")):
+            for target, name in ((self._sync_loop, "chessprac-sync"), (self._analysis_loop, "chessprac-analyse"),
+                                 (self._cloud_loop, "chessprac-en-ligne")):
                 t = threading.Thread(target=target, name=name, daemon=True)
                 t.start()
                 self._threads.append(t)
@@ -44,6 +50,7 @@ class Worker:
         self._stop.set()
         self._wake_sync.set()
         self._wake_analysis.set()
+        self._wake_cloud.set()
 
     def shutdown(self, timeout: float = 20) -> None:
         """Arrêt propre : on coupe les Stockfish (l'analyse en cours s'interrompt), puis on attend que les écritures
@@ -124,7 +131,8 @@ class Worker:
     # ------------------------------------------------------------ analyse
 
     def _remaining(self, username: str) -> int:
-        return db.connect().execute("SELECT COUNT(*) n FROM games WHERE username=? AND analyzed IN (0, 2)",
+        return db.connect().execute("""SELECT COUNT(*) n FROM games WHERE username=?
+                                       AND (analyzed IN (0, 2) OR (analyzed=1 AND pending_ex=1))""",
                                     (username.lower(),)).fetchone()["n"]
 
     def _next_game(self, username: str) -> tuple[str | None, bool]:
@@ -139,8 +147,9 @@ class Worker:
             busy = list(self._in_progress)
             ph = ",".join("?" * len(busy)) or "''"
             row = db.connect().execute(
-                f"""SELECT id, analyzed FROM games WHERE username=? AND analyzed IN (0, 2) AND id NOT IN ({ph})
-                    ORDER BY analyzed DESC, end_time DESC LIMIT 1""", [username.lower(), *busy]).fetchone()
+                f"""SELECT id, analyzed FROM games WHERE username=? AND id NOT IN ({ph})
+                    AND (analyzed IN (0, 2) OR (analyzed=1 AND pending_ex=1))
+                    ORDER BY analyzed = 2 DESC, end_time DESC LIMIT 1""", [username.lower(), *busy]).fetchone()
             if row is None:
                 return None, False
             self._in_progress.add(row["id"])
@@ -149,6 +158,14 @@ class Worker:
     def _analysis_loop(self):
         while not self._stop.is_set():
             username = db.get_setting("username")
+            if username:
+                try:
+                    if cloud.pull(username, self._stop):
+                        self._wake_cloud.set()
+                except cloud.CloudError as e:
+                    log.info("reprise en ligne : %s", e)
+                except Exception:
+                    log.error("reprise en ligne : %s", traceback.format_exc())
             if username and self._remaining(username):
                 try:
                     self._analyse_all(username)
@@ -203,24 +220,36 @@ class Worker:
                     gid, asked = self._next_game(username)
                     if gid is None:
                         return
+                    reused = db.connect().execute("SELECT analyzed=1 AND pending_ex=1 r FROM games WHERE id=?",
+                                                  (gid,)).fetchone()["r"]
                     try:
                         n, d = limits(gid, asked)
-                        analysis.analyse_game(eng, gid, n)
+                        if not reused:
+                            analysis.analyse_game(eng, gid, n)
                         exercises.generate_for_game(eng, gid, d)
-                        brilliance.scan_game(gid)
+                        if reused:
+                            db.connect().execute("UPDATE games SET pending_ex=0, uploaded=0 WHERE id=?", (gid,))
+                        else:
+                            brilliance.scan_game(gid)
                     except Exception:
                         with db.transaction() as tx:
                             if self._stop.is_set():  # appli fermée en pleine analyse : à refaire la prochaine fois
-                                tx.execute("UPDATE games SET analyzed=0 WHERE id=?", (gid,))
+                                if not reused:
+                                    tx.execute("UPDATE games SET analyzed=0 WHERE id=?", (gid,))
                                 return
                             log.error("analyse %s: %s", gid, traceback.format_exc())
-                            tx.execute("UPDATE games SET analyzed=-1 WHERE id=?", (gid,))
+                            if reused:  # l'analyse reprise reste bonne : seuls les exercices manquent
+                                tx.execute("UPDATE games SET pending_ex=0 WHERE id=?", (gid,))
+                            else:
+                                tx.execute("UPDATE games SET analyzed=-1 WHERE id=?", (gid,))
                     finally:
                         with self._lock:
                             self._in_progress.discard(gid)
                     with lock:
                         done[0] += 1
                         show()
+                    if done[0] % PUSH_EVERY == 0:
+                        self._wake_cloud.set()
             finally:
                 with self._lock:
                     self._engines.discard(eng)
@@ -234,6 +263,45 @@ class Worker:
             futures = [pool.submit(run) for _ in range(n_workers)]
             for f in futures:
                 f.result()
+
+
+    # ------------------------------------------------------------ en ligne
+
+    def _cloud_loop(self):
+        last_stats_try = 0.0
+        while not self._stop.is_set():
+            username = db.get_setting("username")
+            st = self.status["cloud"]
+            if username and cloud.base() and cloud.key():
+                try:
+                    with self._lock:
+                        busy = set(self._in_progress)
+                    ids = cloud.pending(username, busy)
+                    st.update(pending=len(ids), sending=bool(ids))
+                    if ids:
+                        cloud.push_games(username, ids, self._stop)
+                        db.set_setting("cloud_dirty", 1)
+                    # Les stats repartent quand des parties ont changé (pas plus d'une fois par 10 min),
+                    # et au moins deux fois par jour.
+                    now = time.time()
+                    age = now - float(db.get_setting("cloud_stats_at") or 0)
+                    if not self._stop.is_set() and now - last_stats_try >= cloud.STATS_EVERY and (
+                            (db.get_setting("cloud_dirty") == "1" and age >= cloud.STATS_EVERY)
+                            or age >= cloud.STATS_REFRESH):
+                        last_stats_try = now
+                        st.update(sending=True)
+                        cloud.push_stats(username)
+                        db.set_setting("cloud_dirty", 0)
+                    st.update(error=None, last=time.time())
+                except cloud.CloudError as e:
+                    st.update(error=str(e))
+                except Exception as e:
+                    log.error("envoi en ligne : %s", traceback.format_exc())
+                    st.update(error=f"Erreur : {e}")
+                st.update(online=cloud.online_count(username), sending=False,
+                          pending=len(cloud.pending(username)))
+            self._wake_cloud.wait(timeout=120)
+            self._wake_cloud.clear()
 
 
 worker = Worker()

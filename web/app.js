@@ -175,6 +175,12 @@
     window.scrollTo(0, 0);
     let page = r.page;
     if (!CP.status) await CP.refreshStatus();
+    if (!CP.status && CP.online) {
+      main.innerHTML = `<div class="welcome card"><p class="eyebrow">ChessPrac en ligne</p><h1>Compte introuvable</h1>
+        <p class="lede">${CP.h(CP.statusError || 'Le service en ligne ne répond pas.')}</p>
+        <a class="btn btn-primary" href="/${CP.online.base ? location.search : ''}">Voir les comptes en ligne</a></div>`;
+      return;
+    }
     if (!CP.status) {
       // Serveur ou base illisible : surtout ne pas afficher « Bienvenue », on croirait avoir tout perdu.
       main.innerHTML = `<div class="welcome card"><p class="eyebrow">Problème</p><h1>ChessPrac ne répond pas</h1>
@@ -182,7 +188,11 @@
         <button class="btn btn-primary" onclick="CP.status=null;CP.render()">Réessayer</button></div>`;
       return;
     }
-    if (!CP.status.username && page !== 'settings') page = 'welcome';
+    if (CP.online) {
+      // En ligne : seulement les parties et les stats (l'entraînement reste dans l'appli).
+      if (!CP.online.account) page = 'accounts';
+      else if (!['games', 'review', 'diag'].includes(page)) page = 'games';
+    } else if (!CP.status.username && page !== 'settings') page = 'welcome';
     try {
       const fn = CP.pages[page];
       const cleanup = await fn(main, r, () => id === CP.renderId);
@@ -214,6 +224,12 @@
     const pill = document.getElementById('status');
     const w = s.worker || {};
     pill.classList.remove('hidden', 'err');
+    if (s.online) {
+      pill.classList.toggle('hidden', !s.username);
+      pill.innerHTML = `<span>En ligne · ${CP.fmt.num(s.counts && s.counts.games)} parties</span>`;
+      document.getElementById('brand-sub').textContent = s.display_name || 'en ligne';
+      return s;
+    }
     if (w.error) {
       pill.classList.add('err');
       pill.innerHTML = `<span>${CP.h(w.error)}</span>`;
@@ -237,11 +253,13 @@
   CP.start = function () {
     window.addEventListener('hashchange', () => CP.render());
     document.getElementById('status').addEventListener('click', async () => {
+      if (CP.online) return;
       await CP.api('/api/sync', {});
       CP.toast('Synchronisation lancée');
       setTimeout(CP.refreshStatus, 600);
     });
     CP.render();
+    if (CP.online) return; // rien ne tourne en fond en ligne
     const loop = async () => {
       const s = await CP.refreshStatus();
       const busy = s && s.worker && s.worker.phase !== 'idle';

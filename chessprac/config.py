@@ -18,6 +18,13 @@ LEGACY_DB_PATH = None if os.environ.get("CHESSPRAC_HOME") else \
 LOG_PATH = HOME / "chessprac.log"
 PORT = int(os.environ.get("CHESSPRAC_PORT", "47820"))
 
+# ChessPrac en ligne : les analyses et les stats de chaque compte, lisibles depuis n'importe quel appareil
+# (cloud/worker.js). Lecture libre ; pour envoyer, il faut la clé (Réglages, ou le fichier cle-en-ligne.txt).
+CLOUD_URL = os.environ.get("CHESSPRAC_CLOUD", "https://chessprac.sushi-adouane.workers.dev")
+if CLOUD_URL.lower() in ("off", "0", "non"):  # CHESSPRAC_CLOUD=off : rien en ligne (tests)
+    CLOUD_URL = ""
+CLOUD_KEY_FILE = ROOT / "cle-en-ligne.txt"
+
 # L'API publique de chess.com demande un User-Agent qui identifie l'outil (sans données perso).
 USER_AGENT = "ChessPrac/1.0 (outil perso d'entrainement hors ligne)"
 
@@ -29,6 +36,7 @@ DEFAULTS = {
     "workers": str(max(1, min(6, (os.cpu_count() or 4) // 2))),
     "lichess_token": "",
     "auto_sync_minutes": "30",
+    "cloud_key": "",
 }
 
 

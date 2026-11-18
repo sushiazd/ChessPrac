@@ -35,6 +35,20 @@ Les lancements suivants ouvrent directement la fenêtre.
 | **Statistiques** | Tes coups classés comme sur chess.com (brillants !!, grands coups !, meilleurs… gaffes), la galerie de tes coups brillants, tes records (plus belle victoire, remontée, série...), et où tu perds : causes des erreurs, phase, temps de réflexion, pendule, Elo, ouvertures. |
 | **Finales** | Les finales de base contre Stockfish : mats (dame, tour, escalier), opposition, Lucena, Philidor, dame contre pion. |
 
+## En ligne
+
+Les parties analysées et les statistiques de chaque compte se consultent aussi depuis n'importe quel appareil
+(téléphone, tablette), sans rien réanalyser : **https://chessprac.sushi-adouane.workers.dev** (liste des comptes), ou
+directement `…workers.dev/pseudo` (ex. `/sush1_chess`). Seulement les pages **Parties** et **Statistiques**, en
+lecture : l'entraînement (exercices, révisions, répertoire, finales) reste sur le PC.
+
+- L'appli envoie toute seule chaque partie analysée, puis les stats, si elle a la **clé d'envoi** (Réglages > En
+  ligne, ou un fichier `cle-en-ligne.txt` à côté de `ChessPrac.exe`). Sans clé, rien n'est envoyé.
+- Avant d'analyser une partie, l'appli regarde si elle est déjà en ligne (analysée par l'adversaire, ou sur un autre
+  appareil). Si oui, elle reprend l'analyse au lieu de relancer Stockfish ; seuls les exercices sont faits sur place.
+- Le service : `cloud/worker.js` (Cloudflare Worker, offre gratuite) et sa base `cloud/schema.sql` (D1). Les pages
+  sont celles de `web/`, servies depuis ce dépôt GitHub.
+
 ## Détails techniques
 
 - `chessprac/` : le moteur en Python (python-chess + Stockfish). `server.py` sert l'interface et une API JSON sur

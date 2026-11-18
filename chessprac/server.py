@@ -12,7 +12,8 @@ from urllib.parse import parse_qs, urlparse
 
 import chess
 
-from . import __version__, book, chesscom, config, conversions, db, endgames, exercises, explorer, repertoire, stats
+from . import __version__, book, chesscom, cloud, config, conversions, db, endgames, exercises, explorer, gameview, repertoire, stats
+from .gameview import game_row
 from .engine import EngineMissing
 from .worker import worker
 
@@ -103,6 +104,9 @@ def api_settings(q, body):
     out["db_path"] = str(config.DB_PATH)
     out["backups"] = [{"name": b.name, "at": b.stat().st_mtime} for b in db.backups()]
     out["cpu_count"] = os.cpu_count() or 0
+    u = db.get_setting("username")
+    out["cloud"] = {"page": cloud.page_url(u) if u else "", "home": cloud.base(), "has_key": bool(cloud.key()),
+                    "key_in_file": not db.get_setting("cloud_key") and bool(cloud.key())}
     return out
 
 
@@ -123,6 +127,9 @@ def api_settings_set(q, body):
             db.set_setting(k, int(body[k]))
     if "lichess_token" in body:
         db.set_setting("lichess_token", body["lichess_token"].strip())
+    if "cloud_key" in body:
+        db.set_setting("cloud_key", body["cloud_key"].strip())
+        worker._wake_cloud.set()
     return api_settings(q, body)
 
 
@@ -147,12 +154,6 @@ def streak() -> int:
         n += 1
         t -= 86400
     return n
-
-
-def game_row(r) -> dict:
-    d = dict(r)
-    d.pop("pgn", None)
-    return d
 
 
 @route("GET", "/api/today")
@@ -200,63 +201,14 @@ def api_games(q, body):
     return {"total": total, "games": [game_row(r) for r in rows]}
 
 
-def _pv_san(fen: str, pv: str | None, n: int = 8) -> list[str]:
-    if not pv:
-        return []
-    b = chess.Board(fen)
-    out = []
-    for u in pv.split()[:n]:
-        m = chess.Move.from_uci(u)
-        if not b.is_legal(m):
-            break
-        out.append(b.san(m))
-        b.push(m)
-    return out
-
-
-def move_kind(p: dict, forced: bool, in_book: bool) -> str | None:
-    """Le type affiché d'un coup (pas encore analysé : None)."""
-    if forced:
-        return "forced"
-    if in_book:
-        return "book"
-    if p.get("special") in ("brilliant", "great"):
-        return p["special"]
-    if p.get("cls") is None:
-        return None
-    if p.get("missed") and p["cls"] != "blunder":
-        return "miss"  # l'adversaire venait de se tromper et l'occasion est passée
-    return p["cls"]
-
-
 @route("GET", "/api/game")
 def api_game(q, body):
-    conn = db.connect()
-    g = conn.execute("SELECT * FROM games WHERE id=?", (q["id"],)).fetchone()
-    if g is None:
+    out = gameview.payload(q["id"])
+    if out is None:
         raise ApiError("Partie introuvable", 404)
-    rows = conn.execute("SELECT * FROM moves WHERE game_id=? ORDER BY ply", (q["id"],)).fetchall()
-    plies = []
-    for r in rows:
-        d = dict(r)
-        d["pv"] = d["pv"].split() if d["pv"] else []
-        d["pv_san"] = _pv_san(r["fen_before"], r["pv"])
-        plies.append(d)
-    final = None
-    if rows:
-        b = chess.Board(rows[-1]["fen_before"])
-        b.push(chess.Move.from_uci(rows[-1]["uci"]))
-        final = b.fen()
-    # Type de chaque coup, comme sur chess.com : forcé, théorie, brillant, grand coup, meilleur... gaffe.
-    fens_after = [p["fen_before"] for p in plies[1:]] + ([final] if final else [])
-    names = book.book_plies(fens_after, [p["drop"] for p in plies])
-    for p, name in zip(plies, names):
-        forced = chess.Board(p["fen_before"]).legal_moves.count() == 1
-        p["book"] = name
-        p["kind"] = move_kind(p, forced, name is not None)
-    ex = conn.execute("SELECT id, kind, ply FROM exercises WHERE game_id=?", (q["id"],)).fetchall()
-    return {"game": game_row(g), "plies": plies, "final_fen": final, "exercises": [dict(e) for e in ex],
-            "start_fen": chess.STARTING_FEN}
+    ex = db.connect().execute("SELECT id, kind, ply FROM exercises WHERE game_id=?", (q["id"],)).fetchall()
+    out["exercises"] = [dict(e) for e in ex]
+    return out
 
 
 @route("POST", "/api/game/reviewed")

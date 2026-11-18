@@ -105,6 +105,8 @@ MIGRATIONS = [
     "ALTER TABLE exercises ADD COLUMN last_secs REAL",
     "ALTER TABLE moves ADD COLUMN special TEXT",                     # brilliant (!!) ou great (!)
     "ALTER TABLE games ADD COLUMN specials_done INTEGER DEFAULT 0",
+    "ALTER TABLE games ADD COLUMN uploaded INTEGER DEFAULT 0",      # 1 = déjà envoyée en ligne dans cet état
+    "ALTER TABLE games ADD COLUMN pending_ex INTEGER DEFAULT 0",    # analyse reprise d'en ligne, exercices à faire
 ]
 
 _local = threading.local()

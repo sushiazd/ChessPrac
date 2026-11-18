@@ -24,9 +24,9 @@ CP.pages.review = async function (main, route, alive) {
         <span class="ink2">${h(g.opening || '')}</span>
         ${g.url ? ` · <a href="${h(g.url)}" target="_blank" rel="noopener">voir sur chess.com</a>` : ''}</p>
     </div>
-      <div class="row">${nEx ? `<a class="btn btn-primary" href="#/erreurs?game=${encodeURIComponent(g.id)}">S'entraîner sur cette partie (${nEx})</a>` : ''}</div>
+      <div class="row">${nEx && !CP.online ? `<a class="btn btn-primary" href="#/erreurs?game=${encodeURIComponent(g.id)}">S'entraîner sur cette partie (${nEx})</a>` : ''}</div>
     </div>
-    ${analyzed ? '' : `<div class="note info" style="margin-bottom:16px" id="pending">Cette partie n'est pas encore analysée.
+    ${analyzed || CP.online ? '' : `<div class="note info" style="margin-bottom:16px" id="pending">Cette partie n'est pas encore analysée.
       <button class="btn btn-sm" id="prio" style="margin-left:8px">L'analyser maintenant</button></div>`}
     <div class="review">
       <div class="left">
@@ -48,12 +48,12 @@ CP.pages.review = async function (main, route, alive) {
         <div class="card ${analyzed ? '' : 'hidden'}" id="summary"></div>
         <div class="card" id="moments-card"><div class="card-title"><h3>Tes moments clés</h3></div><div class="key-moments" id="moments"></div></div>
         <div class="moves" id="moves"></div>
-        <div class="card"><div class="card-title"><h3>Analyse de la position</h3><span class="sp"></span>
+        <div class="card ${CP.online ? 'hidden' : ''}"><div class="card-title"><h3>Analyse de la position</h3><span class="sp"></span>
           <button class="btn btn-sm" id="deep">Analyser</button></div><div id="deep-out" class="small muted">Stockfish plus profond, 3 meilleures suites.</div></div>
       </div>
     </div>`;
 
-  const board = new Board(main.querySelector('#board'), { orientation: mine, movable: 'both', onMove: onUserMove });
+  const board = new Board(main.querySelector('#board'), { orientation: mine, movable: CP.online ? null : 'both', onMove: onUserMove });
   const bar = new EvalBar(main.querySelector('#evalbar'));
 
   // ------------------------------------------------ liste des coups
@@ -126,7 +126,7 @@ CP.pages.review = async function (main, route, alive) {
   function infoHtml() {
     if (variation) {
       return `<p class="label">Variante</p><p class="big">${h(CP.sanLine(variation.sans, variation.startPly)) || 'Joue des coups pour explorer'}</p>
-        <p class="small muted" id="var-eval">…</p>
+        <p class="small muted" id="var-eval">${CP.online ? 'Stockfish ne tourne pas dans la version en ligne : la suite affichée est celle de l’analyse.' : '…'}</p>
         <button class="btn btn-sm" id="back">Retour à la partie</button>`;
     }
     if (idx === 0) return `<p class="label">Début de partie</p><p class="big">Utilise ← → pour avancer, ou clique un coup.</p>
@@ -177,7 +177,7 @@ CP.pages.review = async function (main, route, alive) {
     const sans = [];
     for (let j = 0; j <= k && j < p.pv.length; j++) {
       const r = await CP.api('/api/move', { fen, uci: p.pv[j] });
-      fen = r.fen; last = CP.uciSquares(p.pv[j]); sans.push(r.san);
+      fen = r.fen; last = CP.uciSquares(p.pv[j]); sans.push(r.san || p.pv_san[j]);
     }
     variation = { fen, base: fromIdx, sans, startPly: CP.plyOfFen(p.fen_before), lastMove: last };
     render();
@@ -226,7 +226,7 @@ CP.pages.review = async function (main, route, alive) {
       else if (bottom > movesEl.scrollTop + movesEl.clientHeight) movesEl.scrollTop = bottom - movesEl.clientHeight + 4;
     }
     if (analyzed) drawChart();
-    if (variation) {
+    if (variation && !CP.online) {
       clearTimeout(evalTimer);
       evalTimer = setTimeout(async () => {
         const ev = await CP.api('/api/analyse', { fen: variation.fen, nodes: 400000 });
@@ -280,7 +280,7 @@ CP.pages.review = async function (main, route, alive) {
   };
 
   let poll;
-  if (!analyzed) {
+  if (!analyzed && !CP.online) {
     main.querySelector('#prio').onclick = async () => {
       await CP.api('/api/game/analyse', { id: g.id });
       main.querySelector('#pending').innerHTML = 'Analyse demandée : elle passe devant les autres. La page se mettra à jour toute seule.';

@@ -6,7 +6,7 @@ CP.pages.games = async function (main, route) {
   const limit = 60;
 
   main.innerHTML = `
-    <div class="head"><div><p class="eyebrow">Parties</p><h1>Mes parties</h1>
+    <div class="head"><div><p class="eyebrow">Parties</p><h1>${CP.online ? `Les parties de ${h(CP.status.display_name)}` : 'Mes parties'}</h1>
       <p class="lede">Ouvre une partie pour la revoir coup par coup, avec Stockfish et le temps passé sur chaque coup.</p></div></div>
     <div class="row" style="margin-bottom:14px">
       <div class="pills" id="tc">${[['', 'Toutes'], ['rapid', 'Rapide'], ['blitz', 'Blitz'], ['bullet', 'Bullet'], ['daily', 'Daily']]

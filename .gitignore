@@ -5,3 +5,5 @@ __pycache__/
 .claude/
 # Stockfish (~100 Mo) depasse la limite de GitHub : lancer.bat le telecharge (tools/get_stockfish.py).
 engine/*.exe
+# Clé d'envoi vers ChessPrac en ligne : à ne pas publier.
+cle-en-ligne.txt

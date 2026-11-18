@@ -89,7 +89,7 @@ def scan_game(game_id: str) -> dict:
         updates.append((special, game_id, r["ply"]))
     with db.transaction() as tx:
         tx.executemany("UPDATE moves SET special=? WHERE game_id=? AND ply=?", updates)
-        tx.execute("UPDATE games SET specials_done=1 WHERE id=?", (game_id,))
+        tx.execute("UPDATE games SET specials_done=1, uploaded=0 WHERE id=?", (game_id,))
     return found
 
 

@@ -60,6 +60,15 @@ def evaluate_positions(engine: chess.engine.SimpleEngine, fens: list[str], nodes
     return out
 
 
+def game_accuracy(xs: list[float]) -> float | None:
+    """Comme Lichess : moitié moyenne, moitié moyenne harmonique (une grosse gaffe pèse plus qu'une simple moyenne)."""
+    if not xs:
+        return None
+    arith = sum(xs) / len(xs)
+    harm = len(xs) / sum(1 / max(x, 1.0) for x in xs)
+    return round((arith + harm) / 2, 1)
+
+
 def analyse_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: int) -> None:
     conn = db.connect()
     rows = conn.execute("SELECT ply, uci, fen_before, color FROM moves WHERE game_id=? ORDER BY ply",
@@ -99,14 +108,6 @@ def analyse_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: int) ->
                         phase_of(board, r["ply"]), game_id, r["ply"]))
         prev_drop = drop
 
-    def mean(xs):
-        # Comme Lichess : moitié moyenne, moitié moyenne harmonique (une grosse gaffe pèse plus qu'une simple moyenne).
-        if not xs:
-            return None
-        arith = sum(xs) / len(xs)
-        harm = len(xs) / sum(1 / max(x, 1.0) for x in xs)
-        return round((arith + harm) / 2, 1)
-
     opp_color = "b" if my_color == "w" else "w"
     with db.transaction() as tx:
         tx.executemany(
@@ -114,6 +115,6 @@ def analyse_game(engine: chess.engine.SimpleEngine, game_id: str, nodes: int) ->
                wp_before=?, wp_after=?, "drop"=?, accuracy=?, cls=?, missed=?, phase=? WHERE game_id=? AND ply=?""",
             updates)
         tx.execute("""UPDATE games SET analyzed=1, analyzed_at=?, acc_me=?, acc_opp=?, n_inacc=?, n_mistakes=?,
-                      n_blunders=? WHERE id=?""",
-                   (time.time(), mean(acc[my_color]), mean(acc[opp_color]), counts["inaccuracy"], counts["mistake"],
+                      n_blunders=?, uploaded=0 WHERE id=?""",
+                   (time.time(), game_accuracy(acc[my_color]), game_accuracy(acc[opp_color]), counts["inaccuracy"], counts["mistake"],
                     counts["blunder"], game_id))

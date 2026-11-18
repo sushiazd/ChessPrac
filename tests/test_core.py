@@ -128,3 +128,35 @@ def test_sacrifice_detection():
     # Reprendre une pièce de même valeur non plus (1.e4 e5 2.Nc3 Nf6 3.Nf3 Nxe4 4.Nxe4).
     b2 = chess.Board("rnbqkb1r/pppp1ppp/8/4p3/4n3/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 0 4")
     assert not is_sacrifice(b2, chess.Move.from_uci("c3e4"), ["d7d5"])
+
+
+def test_cloud_import_reuses_analysis():
+    """Une analyse reprise d'en ligne redonne exactement la même partie analysée, puis attend ses exercices."""
+    from chessprac import cloud, gameview
+    store("g1")
+    conn = db.connect()
+    plies = conn.execute("SELECT ply, color FROM moves WHERE game_id='g1' ORDER BY ply").fetchall()
+    for r in plies:
+        drop = 40.0 if r["ply"] == 6 else 1.0
+        conn.execute("""UPDATE moves SET cp_before=?, cp_after=?, best_uci='e2e4', best_san='e4', pv='e2e4 e7e5',
+                        wp_before=60, wp_after=?, "drop"=?, accuracy=?, cls=?, missed=0, phase='opening'
+                        WHERE game_id='g1' AND ply=?""",
+                     (r["ply"] * 10, r["ply"] * 10 + 5, 60 - drop, drop, move_accuracy(drop),
+                      analysis.classify(drop, False), r["ply"]))
+    conn.execute("UPDATE games SET analyzed=1, acc_me=1 WHERE id='g1'")
+    data = gameview.payload("g1")
+    cols = 'cp_before, cp_after, best_uci, pv, wp_after, "drop", accuracy, cls'
+    before = [tuple(r) for r in conn.execute(f"SELECT {cols} FROM moves WHERE game_id='g1' ORDER BY ply")]
+
+    conn.execute('UPDATE moves SET cp_before=NULL, cp_after=NULL, pv=NULL, "drop"=NULL, cls=NULL WHERE game_id=?', ("g1",))
+    conn.execute("UPDATE games SET analyzed=0 WHERE id='g1'")
+    bad = json.loads(json.dumps(data))
+    bad["plies"][2]["uci"] = "a2a3"
+    assert not cloud.import_payload("g1", bad)  # pas les mêmes coups : refusé
+    assert cloud.import_payload("g1", data)
+    after = [tuple(r) for r in conn.execute(f"SELECT {cols} FROM moves WHERE game_id='g1' ORDER BY ply")]
+    assert after == before
+    g = conn.execute("SELECT analyzed, pending_ex, uploaded, n_blunders, acc_me FROM games WHERE id='g1'").fetchone()
+    assert (g["analyzed"], g["pending_ex"], g["uploaded"], g["n_blunders"]) == (1, 1, 0, 0)
+    assert g["acc_me"] == analysis.game_accuracy([p["accuracy"] for p in data["plies"] if p["color"] == "w"])
+    assert not cloud.import_payload("g1", data)  # déjà analysée : rien à reprendre
