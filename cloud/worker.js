@@ -5,7 +5,8 @@ statistiques. Tout le monde peut les lire (téléphone, tablette...). Seules les
 (secret WRITE_KEY) peuvent en envoyer. L'entraînement (exercices, révisions, répertoire) n'y est jamais : il reste
 sur le PC.
 
-Les pages viennent du dépôt GitHub public, à la version WEB_REF : ce sont les mêmes que dans l'appli, en lecture seule.
+Les pages viennent du dépôt GitHub public, branche ou version WEB_REF (« main » : elles suivent le dépôt, 10 min de
+cache) : ce sont les mêmes que dans l'appli, en lecture seule.
 */
 const TYPES = {
   html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8',
@@ -128,7 +129,7 @@ async function asset(req, env, url) {
   const file = seg.length === 0 || (seg.length === 1 && !seg[0].includes('.')) ? 'index.html' : seg.join('/');
   if (!/^[\w\-./]+$/.test(file) || file.includes('..')) return new Response('Introuvable', { status: 404 });
   const r = await fetch(`https://raw.githubusercontent.com/${env.REPO}/${env.WEB_REF}/web/${file}`,
-    { cf: { cacheTtl: 86400, cacheEverything: true } });
+    { cf: { cacheTtl: 600, cacheEverything: true } });
   if (!r.ok) return new Response('Introuvable', { status: 404 });
   const ext = file.split('.').pop();
   return new Response(r.body, { headers: { 'content-type': TYPES[ext] || 'application/octet-stream', 'cache-control': 'public, max-age=300' } });
