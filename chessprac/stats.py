@@ -1,4 +1,6 @@
 """Le diagnostic : où et comment je perds des points."""
+import json
+import math
 import time
 
 from . import db
@@ -311,4 +313,79 @@ def fun(username: str, time_class: str | None = None, days: int | None = None) -
             periods.append({"label": label, "n": len(sel), "score": round(100 * score)})
     out["periods"] = periods
     out["records"] = rec
+    return out
+
+
+# ---------------------------------------------------------------- Elo potentiel
+
+POT_GAMES = 50        # les 50 dernières parties classées de la cadence...
+POT_HALF_LIFE = 20    # ... les plus récentes comptent plus (poids divisé par 2 tous les 20 parties)
+POT_MIN_GAMES = 15
+POT_WIN_WP = 85       # « position gagnante » : au moins 85 % de chances de gain...
+POT_WIN_MOVES = 2     # ... sur au moins 2 de mes coups (pas juste un éclair)
+POT_NEAR = 150        # « joueurs de ton niveau » : à 150 Elo près
+POT_PRIOR = 2.0       # une nulle fictive contre son propre Elo : évite les chiffres absurdes sur peu de parties
+
+
+def _expected(diff: float) -> float:
+    return 1 / (1 + 10 ** (-diff / 400))
+
+
+def performance(opps: list[float], scores: list[float], weights: list[float], prior: float) -> float:
+    """L'Elo R pour lequel le score attendu contre ces adversaires égale le score obtenu (pondéré)."""
+    goal = sum(w * s for w, s in zip(weights, scores)) + POT_PRIOR * 0.5
+    lo, hi = -500.0, 4000.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        e = sum(w * _expected(mid - o) for w, o in zip(weights, opps)) + POT_PRIOR * _expected(mid - prior)
+        lo, hi = (mid, hi) if e < goal else (lo, mid)
+    return (lo + hi) / 2
+
+
+def potential(username: str) -> dict:
+    """Elo potentiel par cadence, d'après les dernières parties classées analysées :
+    - niveau actuel : la performance (Elo des adversaires + résultats) ;
+    - potentiel : la même performance si les positions gagnantes avaient été gagnées ;
+    - potentiel max : en punissant aussi les cadeaux adverses (une seule fois à 85 %, pas vu).
+    Plus la précision face à des joueurs de son Elo, pour voir si le jeu est meilleur que les résultats."""
+    conn = db.connect()
+    u = username.lower()
+    cc = db.get_setting("cc_stats")
+    ratings = json.loads(cc) if cc and db.get_setting("username") == u else {}
+    out = {}
+    for tc in ("rapid", "blitz", "bullet"):
+        games = conn.execute("""SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp FROM games
+                                WHERE username=? AND time_class=? AND rated=1 AND analyzed=1 AND opp_rating > 0
+                                ORDER BY end_time DESC LIMIT ?""", (u, tc, POT_GAMES)).fetchall()
+        if len(games) < POT_MIN_GAMES:
+            continue
+        ids = [g["id"] for g in games]
+        ph = ",".join("?" * len(ids))
+        winning = {r["game_id"]: r["n"] for r in conn.execute(
+            f"""SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ? AND game_id IN ({ph})
+                GROUP BY game_id""", [POT_WIN_WP, *ids])}
+        cur = (ratings.get(tc) or {}).get("rating") or games[0]["my_rating"]
+        opps = [g["opp_rating"] for g in games]
+        w = [0.5 ** (i / POT_HALF_LIFE) for i in range(len(games))]
+        sc = [{"win": 1.0, "draw": 0.5}.get(g["result"], 0.0) for g in games]
+        thrown = [i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) >= POT_WIN_MOVES]
+        gifts = [i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) == 1]
+        now = performance(opps, sc, w, cur)
+        conv = performance(opps, [1.0 if i in thrown else s for i, s in enumerate(sc)], w, cur)
+        best = performance(opps, [1.0 if i in thrown or i in gifts else s for i, s in enumerate(sc)], w, cur)
+        # Incertitude de la performance (≈ 1 écart type), avec le nombre effectif de parties.
+        n_eff = sum(w) ** 2 / sum(x * x for x in w)
+        e = _expected(0)
+        se = 400 / math.log(10) / math.sqrt(n_eff * e * (1 - e))
+        near = [g for g in games if g["acc_me"] is not None and g["acc_opp"] is not None
+                and abs(g["opp_rating"] - g["my_rating"]) <= POT_NEAR]
+        r10 = lambda x: int(round(x / 10) * 10)
+        out[tc] = {
+            "current": cur, "n": len(games), "since": games[-1]["end_time"], "last": games[0]["end_time"],
+            "level": r10(now), "potential": r10(conv), "max": r10(best), "margin": r10(se),
+            "thrown": len(thrown), "thrown_timeout": sum(1 for i in thrown if games[i]["my_code"] == "timeout"),
+            "gifts": len(gifts),
+            "acc": {"me": round(sum(g["acc_me"] for g in near) / len(near), 1),
+                    "opp": round(sum(g["acc_opp"] for g in near) / len(near), 1), "n": len(near)} if near else None,
+        }
     return out

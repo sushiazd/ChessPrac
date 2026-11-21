@@ -160,3 +160,21 @@ def test_cloud_import_reuses_analysis():
     assert (g["analyzed"], g["pending_ex"], g["uploaded"], g["n_blunders"]) == (1, 1, 0, 0)
     assert g["acc_me"] == analysis.game_accuracy([p["accuracy"] for p in data["plies"] if p["color"] == "w"])
     assert not cloud.import_payload("g1", data)  # déjà analysée : rien à reprendre
+
+
+def test_performance_and_potential():
+    from chessprac import stats
+    w = [1.0] * 10
+    # 50 % contre des 1000 : 1000 ; plus de victoires : plus haut.
+    assert abs(stats.performance([1000] * 10, [0.5] * 10, w, 1000) - 1000) < 1
+    assert stats.performance([1000] * 10, [1.0] * 7 + [0.0] * 3, w, 1000) > 1100
+    # Une partie perdue alors que j'avais une position gagnante (≥ 85 % sur 2 coups) compte dans le potentiel.
+    for i in range(16):
+        store(f"p{i}", result="win" if i % 2 else "loss", end=1_000_000 + i)
+    conn = db.connect()
+    conn.execute("UPDATE games SET analyzed=1, opp_rating=800, my_rating=800, acc_me=80, acc_opp=78")
+    conn.execute("UPDATE moves SET wp_before=90 WHERE game_id='p0' AND mine=1")
+    p = stats.potential("me")["blitz"]
+    assert p["n"] == 16 and p["thrown"] == 1 and p["gifts"] == 0
+    assert p["potential"] > p["level"]
+    assert p["acc"] == {"me": 80.0, "opp": 78.0, "n": 16}

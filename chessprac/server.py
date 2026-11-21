@@ -306,6 +306,7 @@ def api_stats(q, body):
     tc, days = q.get("tc") or None, int(q["days"]) if q.get("days") else None
     out = stats.full(username(), time_class=tc, days=days)
     out["fun"] = stats.fun(username(), time_class=tc, days=days)
+    out["potential"] = stats.potential(username())
     return out
 
 

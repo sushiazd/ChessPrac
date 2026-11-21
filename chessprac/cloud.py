@@ -193,10 +193,12 @@ def push_games(username: str, ids: list[str], stop=None) -> int:
 
 def push_stats(username: str) -> int:
     lines = [_dumps(_head(username))]
+    pot = stats.potential(username)
     for tc in STATS_TC:
         for days in STATS_DAYS:
             out = stats.full(username, time_class=tc or None, days=int(days) if days else None)
             out["fun"] = stats.fun(username, time_class=tc or None, days=int(days) if days else None)
+            out["potential"] = pot
             lines.append("\t".join(["S", f"{tc}|{days}", _dumps(out)]))
     _send(lines)
     db.set_setting("cloud_stats_at", time.time())

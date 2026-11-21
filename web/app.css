@@ -328,6 +328,25 @@ a.record:hover{border-color:var(--rule-strong)}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;
   border-radius:12px;box-shadow:var(--shadow);z-index:100;font-weight:600;font-size:14px}
 
+/* Elo potentiel */
+.pot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.pot{border:1px solid var(--rule);border-radius:12px;padding:16px;background:var(--sheet)}
+.pot.cur{border-color:var(--pen);box-shadow:0 0 0 1px var(--pen) inset}
+.pot-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pot-head .label{font-weight:700;font-size:15px}
+.pot-big{font-family:var(--serif);font-size:40px;line-height:1.1;margin-top:6px;color:var(--pen)}
+.pot-scale{position:relative;height:30px;margin:14px 4px 6px}
+.pot-scale .track{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--sheet-2)}
+.pot-scale .gain{position:absolute;top:13px;height:4px;border-radius:2px;background:var(--pen);opacity:.35}
+.pot-scale .mk{position:absolute;top:6px;width:2px;height:18px;margin-left:-1px;border-radius:1px}
+.pot-scale .mk.cc{background:var(--muted)}
+.pot-scale .mk.lv{background:var(--ink)}
+.pot-scale .mk.pt{background:var(--pen);width:4px;margin-left:-2px}
+.pot-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.pot-legend i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:3px;margin-right:4px}
+.pot-lines{list-style:none;margin:12px 0 0;padding:0;font-size:13px;color:var(--ink-2)}
+.pot-lines li{padding:5px 0;border-top:1px solid var(--rule)}
+.pot-lines b{color:var(--ink)}
 @media (max-width:1100px){
   .review,.trainer{grid-template-columns:1fr}
   .review .left,.trainer .left{max-width:560px}

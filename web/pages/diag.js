@@ -51,11 +51,50 @@ CP.pages.diag = async function (main, route) {
     .map(([v, l]) => `<button data-d="${v}" aria-pressed="${days === v}">${l}</button>`).join('');
   const res = s.results, tot = res.win + res.draw + res.loss;
 
+  // ------------------------------------------------ Elo potentiel (toujours les 3 cadences, sans les filtres)
+  const POT_NAMES = { rapid: 'Rapide', blitz: 'Blitz', bullet: 'Bullet' };
+  const pot = s.potential || {};
+  const signed = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0');
+  const potCard = (k) => {
+    const p = pot[k];
+    const lo = Math.min(p.current, p.level, p.potential) - 60, hi = Math.max(p.current, p.potential, p.max) + 60;
+    const x = (v) => `${(100 * (v - lo)) / (hi - lo)}%`;
+    const gain = p.potential - p.level, extra = p.max - p.potential;
+    const edge = p.acc ? Math.round((p.acc.me - p.acc.opp) * 10) / 10 : null;
+    const old = Date.now() / 1000 - p.last > 120 * 86400;
+    return `<div class="pot ${tc === k ? 'cur' : ''}">
+      <div class="pot-head"><span class="label">${POT_NAMES[k]}</span><span class="small muted">chess.com ${p.current}</span></div>
+      <div class="pot-big num">${p.potential}</div>
+      <div class="small muted">Elo potentiel</div>
+      <div class="pot-scale" title="Gris : Elo chess.com · Noir : niveau actuel · Bleu : potentiel">
+        <div class="track"></div>
+        <div class="gain" style="left:${x(Math.min(p.level, p.potential))};width:calc(${x(Math.max(p.level, p.potential))} - ${x(Math.min(p.level, p.potential))})"></div>
+        <div class="mk cc" style="left:${x(p.current)}"></div><div class="mk lv" style="left:${x(p.level)}"></div><div class="mk pt" style="left:${x(p.potential)}"></div>
+      </div>
+      <div class="pot-legend"><span><i style="background:var(--muted)"></i>chess.com</span><span><i style="background:var(--ink)"></i>niveau actuel</span><span><i style="background:var(--pen)"></i>potentiel</span></div>
+      <ul class="pot-lines">
+        <li>Niveau actuel : <b>${p.level}</b> <span class="muted">± ${p.margin}</span>${p.level - p.current >= 30 ? '<span class="ok">, au-dessus de ton Elo : il devrait suivre</span>' : p.current - p.level >= 30 ? '<span class="muted">, un peu sous ton Elo en ce moment</span>' : ''}</li>
+        <li><b>${signed(gain)}</b> si tu gagnes tes positions gagnantes : ${p.thrown} partie${p.thrown > 1 ? 's' : ''} sur ${p.n}
+          ${p.thrown_timeout ? `<span class="muted">(dont ${p.thrown_timeout} perdue${p.thrown_timeout > 1 ? 's' : ''} au temps)</span>` : ''}</li>
+        ${p.gifts ? `<li><b>${signed(extra)}</b> de plus en punissant les cadeaux adverses pas vus (${p.gifts}) : jusqu'à <b>${p.max}</b></li>` : ''}
+        ${p.acc ? `<li>Précision contre des joueurs de ton Elo : <b>${fmt.pct(p.acc.me, 1)}</b> contre ${fmt.pct(p.acc.opp, 1)}
+          <span class="${edge >= 1.5 ? 'ok' : edge <= -1.5 ? 'bad' : 'muted'}">(${edge > 0 ? '+' : edge < 0 ? '−' : ''}${String(Math.abs(edge)).replace('.', ',')})</span></li>` : ''}
+        ${old ? `<li class="muted">Dernière partie classée ${fmt.rel(p.last)} : l'estimation date un peu.</li>` : ''}
+      </ul></div>`;
+  };
+  const potKeys = ['rapid', 'blitz', 'bullet'].filter((k) => pot[k]);
+  const potHtml = potKeys.length ? `<div class="card" style="margin-bottom:18px"><div class="card-title"><h2>${CP.online ? 'Elo potentiel' : 'Ton Elo potentiel'}</h2></div>
+      <p class="small muted" style="margin:-4px 0 14px">Calculé sur les 50 dernières parties classées de chaque cadence (les plus récentes comptent plus),
+        avec l'Elo des adversaires. <b>Niveau actuel</b> : l'Elo qui correspond à tes résultats. <b>Potentiel</b> : le même calcul si tu avais gagné
+        les parties où tu as eu au moins 85 % de chances de gain.</p>
+      <div class="pot-grid">${potKeys.map(potCard).join('')}</div></div>` : '';
+
   main.innerHTML = `
     <div class="head"><div><p class="eyebrow">Statistiques</p><h1>${CP.online ? `Les statistiques de ${h(CP.status.display_name)}` : 'Tes statistiques'}</h1>
       <p class="lede">${fmt.num(s.games)} parties, dont ${fmt.num(s.analyzed)} analysées par Stockfish.
         ${s.analyzed < s.games ? 'Les chiffres se précisent au fil de l\'analyse.' : ''}</p></div>
       <div class="stack" style="gap:8px;align-items:flex-end"><div class="pills" id="tcp">${tcPills}</div><div class="pills" id="dp">${dayPills}</div></div></div>
+    ${potHtml}
     <div class="card" style="margin-bottom:18px"><div class="card-title"><h2>Tes coups</h2></div>${classesHtml}</div>
     <div class="card" style="margin-bottom:18px"><div class="card-title"><h2>Tes coups brillants</h2>
       <span class="chip" style="background:var(--c-brilliant);color:#fff;border:0">${f.brilliants.length}</span></div>

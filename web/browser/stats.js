@@ -322,3 +322,76 @@ export function fun(username, timeClass = null, days = null) {
   out.records = rec;
   return out;
 }
+
+// ---------------------------------------------------------------- Elo potentiel (même calcul que stats.py)
+
+const POT_GAMES = 50;        // les 50 dernières parties classées de la cadence...
+const POT_HALF_LIFE = 20;    // ... les plus récentes comptent plus (poids divisé par 2 tous les 20 parties)
+const POT_MIN_GAMES = 15;
+const POT_WIN_WP = 85;       // « position gagnante » : au moins 85 % de chances de gain...
+const POT_WIN_MOVES = 2;     // ... sur au moins 2 de mes coups (pas juste un éclair)
+const POT_NEAR = 150;        // « joueurs de ton niveau » : à 150 Elo près
+const POT_PRIOR = 2;         // une nulle fictive contre son propre Elo : évite les chiffres absurdes sur peu de parties
+
+const expectedScore = (diff) => 1 / (1 + 10 ** (-diff / 400));
+
+/** L'Elo R pour lequel le score attendu contre ces adversaires égale le score obtenu (pondéré). */
+export function performance(opps, scores, weights, prior) {
+  const goal = weights.reduce((a, w, i) => a + w * scores[i], 0) + POT_PRIOR * 0.5;
+  let lo = -500, hi = 4000;
+  for (let k = 0; k < 60; k++) {
+    const mid = (lo + hi) / 2;
+    const e = weights.reduce((a, w, i) => a + w * expectedScore(mid - opps[i]), 0) + POT_PRIOR * expectedScore(mid - prior);
+    if (e < goal) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** Elo potentiel par cadence : niveau actuel (performance), potentiel (positions gagnantes gagnées),
+    potentiel max (cadeaux adverses punis aussi), et précision face à des joueurs de son Elo. */
+export function potential(username) {
+  const u = username.toLowerCase();
+  const cc = db.getSetting('cc_stats');
+  const ratings = cc && db.getSetting('username') === u ? JSON.parse(cc) : {};
+  const r10 = (x) => Math.round(x / 10) * 10;
+  const out = {};
+  for (const tc of ['rapid', 'blitz', 'bullet']) {
+    const games = db.all(`SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp FROM games
+                          WHERE username=? AND time_class=? AND rated=1 AND analyzed=1 AND opp_rating > 0
+                          ORDER BY end_time DESC LIMIT ?`, [u, tc, POT_GAMES]);
+    if (games.length < POT_MIN_GAMES) continue;
+    const ids = games.map((g) => g.id);
+    const winning = {};
+    for (const r of db.all(`SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ?
+                            AND game_id IN (${ids.map(() => '?').join(',')}) GROUP BY game_id`, [POT_WIN_WP, ...ids])) {
+      winning[r.game_id] = r.n;
+    }
+    const cur = (ratings[tc] && ratings[tc].rating) || games[0].my_rating;
+    const opps = games.map((g) => g.opp_rating);
+    const w = games.map((_, i) => 0.5 ** (i / POT_HALF_LIFE));
+    const sc = games.map((g) => ({ win: 1, draw: 0.5 }[g.result] || 0));
+    const thrown = new Set(), gifts = new Set();
+    games.forEach((g, i) => {
+      if (g.result === 'win') return;
+      const n = winning[g.id] || 0;
+      if (n >= POT_WIN_MOVES) thrown.add(i);
+      else if (n === 1) gifts.add(i);
+    });
+    const now = performance(opps, sc, w, cur);
+    const conv = performance(opps, sc.map((s, i) => (thrown.has(i) ? 1 : s)), w, cur);
+    const best = performance(opps, sc.map((s, i) => (thrown.has(i) || gifts.has(i) ? 1 : s)), w, cur);
+    const sw = w.reduce((a, b) => a + b, 0);
+    const nEff = (sw * sw) / w.reduce((a, b) => a + b * b, 0);
+    const se = 400 / Math.log(10) / Math.sqrt(nEff * 0.25);
+    const near = games.filter((g) => g.acc_me !== null && g.acc_opp !== null && Math.abs(g.opp_rating - g.my_rating) <= POT_NEAR);
+    const avg = (f) => round(near.reduce((a, g) => a + f(g), 0) / near.length, 1);
+    out[tc] = {
+      current: cur, n: games.length, since: games[games.length - 1].end_time, last: games[0].end_time,
+      level: r10(now), potential: r10(conv), max: r10(best), margin: r10(se),
+      thrown: thrown.size, thrown_timeout: [...thrown].filter((i) => games[i].my_code === 'timeout').length,
+      gifts: gifts.size,
+      acc: near.length ? { me: avg((g) => g.acc_me), opp: avg((g) => g.acc_opp), n: near.length } : null,
+    };
+  }
+  return out;
+}

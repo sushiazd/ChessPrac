@@ -282,6 +282,7 @@ route('POST', '/api/rep/result', (q, body) => { repertoire.drillResult(body.colo
 export function statsPayload(user, tc, days) {
   const out = stats.full(user, tc, days);
   out.fun = stats.fun(user, tc, days);
+  out.potential = stats.potential(user);
   return out;
 }
 
