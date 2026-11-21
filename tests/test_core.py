@@ -177,4 +177,5 @@ def test_performance_and_potential():
     p = stats.potential("me")["blitz"]
     assert p["n"] == 16 and p["thrown"] == 1 and p["gifts"] == 0
     assert p["potential"] > p["level"]
+    assert p["measured"] is False and p["margin"] >= 80   # trop peu d'historique pour vérifier : marge prudente
     assert p["acc"] == {"me": 80.0, "opp": 78.0, "n": 16}

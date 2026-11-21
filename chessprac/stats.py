@@ -323,8 +323,13 @@ POT_HALF_LIFE = 20    # ... les plus récentes comptent plus (poids divisé par 
 POT_MIN_GAMES = 15
 POT_WIN_WP = 85       # « position gagnante » : au moins 85 % de chances de gain...
 POT_WIN_MOVES = 2     # ... sur au moins 2 de mes coups (pas juste un éclair)
+POT_CONVERSION = 0.7  # part réaliste de ces positions qu'on gagne (100 % surestimait d'environ 40 Elo)
 POT_NEAR = 150        # « joueurs de ton niveau » : à 150 Elo près
 POT_PRIOR = 2.0       # une nulle fictive contre son propre Elo : évite les chiffres absurdes sur peu de parties
+POT_HORIZON = 100     # le potentiel vise l'Elo atteint ~100 parties classées plus tard
+POT_BT_STEP = 5       # vérification sur l'historique : un point toutes les 5 parties
+POT_BT_MIN = 8        # points de vérification nécessaires pour annoncer une marge mesurée
+POT_UNRELIABLE = 100  # marge au-delà de laquelle l'estimation est dite peu fiable
 
 
 def _expected(diff: float) -> float:
@@ -335,56 +340,94 @@ def performance(opps: list[float], scores: list[float], weights: list[float], pr
     """L'Elo R pour lequel le score attendu contre ces adversaires égale le score obtenu (pondéré)."""
     goal = sum(w * s for w, s in zip(weights, scores)) + POT_PRIOR * 0.5
     lo, hi = -500.0, 4000.0
-    for _ in range(60):
+    for _ in range(40):
         mid = (lo + hi) / 2
         e = sum(w * _expected(mid - o) for w, o in zip(weights, opps)) + POT_PRIOR * _expected(mid - prior)
         lo, hi = (mid, hi) if e < goal else (lo, mid)
     return (lo + hi) / 2
 
 
+def _estimate(games: list, winning: dict, cur: float) -> dict:
+    """games : les parties analysées de la fenêtre, de la plus récente à la plus ancienne."""
+    opps = [g["opp_rating"] for g in games]
+    w = [0.5 ** (i / POT_HALF_LIFE) for i in range(len(games))]
+    sc = [{"win": 1.0, "draw": 0.5}.get(g["result"], 0.0) for g in games]
+    thrown = {i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) >= POT_WIN_MOVES}
+    gifts = {i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) == 1}
+    conv = lambda s: s + POT_CONVERSION * (1 - s)
+    return {
+        "w": w, "thrown": thrown, "gifts": gifts,
+        "level": performance(opps, sc, w, cur),
+        "potential": performance(opps, [conv(s) if i in thrown else s for i, s in enumerate(sc)], w, cur),
+        "max": performance(opps, [conv(s) if i in thrown or i in gifts else s for i, s in enumerate(sc)], w, cur),
+    }
+
+
+def _winning_moves(conn, ids: list[str]) -> dict:
+    out = {}
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for r in conn.execute(f"""SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ?
+                                  AND game_id IN ({",".join("?" * len(part))}) GROUP BY game_id""", [POT_WIN_WP, *part]):
+            out[r["game_id"]] = r["n"]
+    return out
+
+
+def _backtest(games: list, winning: dict) -> list[float]:
+    """Sur l'historique : à chaque instant passé, l'écart entre l'Elo réel POT_HORIZON parties plus tard et le
+    potentiel qu'on aurait annoncé. games : toutes les parties classées, de la plus ancienne à la plus récente."""
+    errors = []
+    for t in range(POT_GAMES, len(games) - POT_HORIZON + 1, POT_BT_STEP):
+        win = [g for g in games[t - POT_GAMES:t] if g["analyzed"] == 1][::-1]
+        if len(win) < 30:
+            continue
+        cur = games[t - 1]["my_rating"]
+        errors.append(games[t - 1 + POT_HORIZON]["my_rating"] - _estimate(win, winning, cur)["potential"])
+    return errors
+
+
 def potential(username: str) -> dict:
-    """Elo potentiel par cadence, d'après les dernières parties classées analysées :
-    - niveau actuel : la performance (Elo des adversaires + résultats) ;
-    - potentiel : la même performance si les positions gagnantes avaient été gagnées ;
+    """Elo potentiel par cadence, d'après les 50 dernières parties classées analysées :
+    - niveau actuel : la performance (Elo des adversaires + résultats, les récentes comptent plus) ;
+    - potentiel : la même performance en gagnant 70 % des parties où l'on a eu une position gagnante. C'est une
+      prévision de l'Elo ~100 parties plus tard ; sa marge d'erreur est mesurée sur l'historique du compte ;
     - potentiel max : en punissant aussi les cadeaux adverses (une seule fois à 85 %, pas vu).
     Plus la précision face à des joueurs de son Elo, pour voir si le jeu est meilleur que les résultats."""
     conn = db.connect()
     u = username.lower()
     cc = db.get_setting("cc_stats")
     ratings = json.loads(cc) if cc and db.get_setting("username") == u else {}
+    r10 = lambda x: int(math.floor(x / 10 + 0.5) * 10)  # comme Math.round en JS
     out = {}
     for tc in ("rapid", "blitz", "bullet"):
-        games = conn.execute("""SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp FROM games
-                                WHERE username=? AND time_class=? AND rated=1 AND analyzed=1 AND opp_rating > 0
-                                ORDER BY end_time DESC LIMIT ?""", (u, tc, POT_GAMES)).fetchall()
+        hist = conn.execute("""SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp, analyzed
+                               FROM games WHERE username=? AND time_class=? AND rated=1 AND opp_rating > 0
+                               ORDER BY end_time""", (u, tc)).fetchall()
+        games = [g for g in hist if g["analyzed"] == 1][::-1][:POT_GAMES]
         if len(games) < POT_MIN_GAMES:
             continue
-        ids = [g["id"] for g in games]
-        ph = ",".join("?" * len(ids))
-        winning = {r["game_id"]: r["n"] for r in conn.execute(
-            f"""SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ? AND game_id IN ({ph})
-                GROUP BY game_id""", [POT_WIN_WP, *ids])}
+        winning = _winning_moves(conn, [g["id"] for g in hist if g["analyzed"] == 1])
         cur = (ratings.get(tc) or {}).get("rating") or games[0]["my_rating"]
-        opps = [g["opp_rating"] for g in games]
-        w = [0.5 ** (i / POT_HALF_LIFE) for i in range(len(games))]
-        sc = [{"win": 1.0, "draw": 0.5}.get(g["result"], 0.0) for g in games]
-        thrown = [i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) >= POT_WIN_MOVES]
-        gifts = [i for i, g in enumerate(games) if g["result"] != "win" and winning.get(g["id"], 0) == 1]
-        now = performance(opps, sc, w, cur)
-        conv = performance(opps, [1.0 if i in thrown else s for i, s in enumerate(sc)], w, cur)
-        best = performance(opps, [1.0 if i in thrown or i in gifts else s for i, s in enumerate(sc)], w, cur)
-        # Incertitude de la performance (≈ 1 écart type), avec le nombre effectif de parties.
+        est = _estimate(games, winning, cur)
+        w = est["w"]
+        # Marge : l'erreur moyenne mesurée sur l'historique ; sinon l'incertitude statistique de la performance.
         n_eff = sum(w) ** 2 / sum(x * x for x in w)
-        e = _expected(0)
-        se = 400 / math.log(10) / math.sqrt(n_eff * e * (1 - e))
+        stat_margin = 400 / math.log(10) / math.sqrt(n_eff * 0.25)
+        errors = _backtest(hist, winning)
+        measured = len(errors) >= POT_BT_MIN
+        margin = max(stat_margin, sum(abs(e) for e in errors) / len(errors)) if measured else max(stat_margin, 80)
         near = [g for g in games if g["acc_me"] is not None and g["acc_opp"] is not None
                 and abs(g["opp_rating"] - g["my_rating"]) <= POT_NEAR]
-        r10 = lambda x: int(round(x / 10) * 10)
+        thrown = est["thrown"]
         out[tc] = {
             "current": cur, "n": len(games), "since": games[-1]["end_time"], "last": games[0]["end_time"],
-            "level": r10(now), "potential": r10(conv), "max": r10(best), "margin": r10(se),
+            "level": r10(est["level"]), "potential": r10(est["potential"]), "max": r10(est["max"]),
+            "margin": r10(margin), "measured": measured, "checks": len(errors),
+            "bias": r10(sum(errors) / len(errors)) if measured else None,
+            "reliable": measured and margin < POT_UNRELIABLE,
+            "horizon": POT_HORIZON, "conversion": POT_CONVERSION,
             "thrown": len(thrown), "thrown_timeout": sum(1 for i in thrown if games[i]["my_code"] == "timeout"),
-            "gifts": len(gifts),
+            "gifts": len(est["gifts"]),
             "acc": {"me": round(sum(g["acc_me"] for g in near) / len(near), 1),
                     "opp": round(sum(g["acc_opp"] for g in near) / len(near), 1), "n": len(near)} if near else None,
         }

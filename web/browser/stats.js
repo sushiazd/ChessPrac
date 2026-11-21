@@ -330,8 +330,13 @@ const POT_HALF_LIFE = 20;    // ... les plus récentes comptent plus (poids divi
 const POT_MIN_GAMES = 15;
 const POT_WIN_WP = 85;       // « position gagnante » : au moins 85 % de chances de gain...
 const POT_WIN_MOVES = 2;     // ... sur au moins 2 de mes coups (pas juste un éclair)
+const POT_CONVERSION = 0.7;  // part réaliste de ces positions qu'on gagne (100 % surestimait d'environ 40 Elo)
 const POT_NEAR = 150;        // « joueurs de ton niveau » : à 150 Elo près
 const POT_PRIOR = 2;         // une nulle fictive contre son propre Elo : évite les chiffres absurdes sur peu de parties
+const POT_HORIZON = 100;     // le potentiel vise l'Elo atteint ~100 parties classées plus tard
+const POT_BT_STEP = 5;       // vérification sur l'historique : un point toutes les 5 parties
+const POT_BT_MIN = 8;        // points de vérification nécessaires pour annoncer une marge mesurée
+const POT_UNRELIABLE = 100;  // marge au-delà de laquelle l'estimation est dite peu fiable
 
 const expectedScore = (diff) => 1 / (1 + 10 ** (-diff / 400));
 
@@ -339,7 +344,7 @@ const expectedScore = (diff) => 1 / (1 + 10 ** (-diff / 400));
 export function performance(opps, scores, weights, prior) {
   const goal = weights.reduce((a, w, i) => a + w * scores[i], 0) + POT_PRIOR * 0.5;
   let lo = -500, hi = 4000;
-  for (let k = 0; k < 60; k++) {
+  for (let k = 0; k < 40; k++) {
     const mid = (lo + hi) / 2;
     const e = weights.reduce((a, w, i) => a + w * expectedScore(mid - opps[i]), 0) + POT_PRIOR * expectedScore(mid - prior);
     if (e < goal) lo = mid; else hi = mid;
@@ -347,8 +352,55 @@ export function performance(opps, scores, weights, prior) {
   return (lo + hi) / 2;
 }
 
-/** Elo potentiel par cadence : niveau actuel (performance), potentiel (positions gagnantes gagnées),
-    potentiel max (cadeaux adverses punis aussi), et précision face à des joueurs de son Elo. */
+/** games : les parties analysées de la fenêtre, de la plus récente à la plus ancienne. */
+function estimate(games, winning, cur) {
+  const opps = games.map((g) => g.opp_rating);
+  const w = games.map((_, i) => 0.5 ** (i / POT_HALF_LIFE));
+  const sc = games.map((g) => ({ win: 1, draw: 0.5 }[g.result] || 0));
+  const thrown = new Set(), gifts = new Set();
+  games.forEach((g, i) => {
+    if (g.result === 'win') return;
+    const n = winning[g.id] || 0;
+    if (n >= POT_WIN_MOVES) thrown.add(i);
+    else if (n === 1) gifts.add(i);
+  });
+  const conv = (s) => s + POT_CONVERSION * (1 - s);
+  return {
+    w, thrown, gifts,
+    level: performance(opps, sc, w, cur),
+    potential: performance(opps, sc.map((s, i) => (thrown.has(i) ? conv(s) : s)), w, cur),
+    max: performance(opps, sc.map((s, i) => (thrown.has(i) || gifts.has(i) ? conv(s) : s)), w, cur),
+  };
+}
+
+function winningMoves(ids) {
+  const out = {};
+  for (let i = 0; i < ids.length; i += 500) {
+    const part = ids.slice(i, i + 500);
+    for (const r of db.all(`SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ?
+                            AND game_id IN (${part.map(() => '?').join(',')}) GROUP BY game_id`, [POT_WIN_WP, ...part])) {
+      out[r.game_id] = r.n;
+    }
+  }
+  return out;
+}
+
+/** Sur l'historique : à chaque instant passé, l'écart entre l'Elo réel POT_HORIZON parties plus tard et le potentiel
+    qu'on aurait annoncé. games : toutes les parties classées, de la plus ancienne à la plus récente. */
+function backtest(games, winning) {
+  const errors = [];
+  for (let t = POT_GAMES; t <= games.length - POT_HORIZON; t += POT_BT_STEP) {
+    const win = games.slice(t - POT_GAMES, t).filter((g) => g.analyzed === 1).reverse();
+    if (win.length < 30) continue;
+    const cur = games[t - 1].my_rating;
+    errors.push(games[t - 1 + POT_HORIZON].my_rating - estimate(win, winning, cur).potential);
+  }
+  return errors;
+}
+
+/** Elo potentiel par cadence : niveau actuel (performance), potentiel (70 % des positions gagnantes gagnées : une
+    prévision de l'Elo ~100 parties plus tard, avec sa marge mesurée sur l'historique), potentiel max (cadeaux
+    adverses punis aussi), et précision face à des joueurs de son Elo. */
 export function potential(username) {
   const u = username.toLowerCase();
   const cc = db.getSetting('cc_stats');
@@ -356,40 +408,32 @@ export function potential(username) {
   const r10 = (x) => Math.round(x / 10) * 10;
   const out = {};
   for (const tc of ['rapid', 'blitz', 'bullet']) {
-    const games = db.all(`SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp FROM games
-                          WHERE username=? AND time_class=? AND rated=1 AND analyzed=1 AND opp_rating > 0
-                          ORDER BY end_time DESC LIMIT ?`, [u, tc, POT_GAMES]);
+    const hist = db.all(`SELECT id, end_time, my_rating, opp_rating, result, my_code, acc_me, acc_opp, analyzed
+                         FROM games WHERE username=? AND time_class=? AND rated=1 AND opp_rating > 0
+                         ORDER BY end_time`, [u, tc]);
+    const games = hist.filter((g) => g.analyzed === 1).reverse().slice(0, POT_GAMES);
     if (games.length < POT_MIN_GAMES) continue;
-    const ids = games.map((g) => g.id);
-    const winning = {};
-    for (const r of db.all(`SELECT game_id, COUNT(*) n FROM moves WHERE mine=1 AND wp_before >= ?
-                            AND game_id IN (${ids.map(() => '?').join(',')}) GROUP BY game_id`, [POT_WIN_WP, ...ids])) {
-      winning[r.game_id] = r.n;
-    }
+    const winning = winningMoves(hist.filter((g) => g.analyzed === 1).map((g) => g.id));
     const cur = (ratings[tc] && ratings[tc].rating) || games[0].my_rating;
-    const opps = games.map((g) => g.opp_rating);
-    const w = games.map((_, i) => 0.5 ** (i / POT_HALF_LIFE));
-    const sc = games.map((g) => ({ win: 1, draw: 0.5 }[g.result] || 0));
-    const thrown = new Set(), gifts = new Set();
-    games.forEach((g, i) => {
-      if (g.result === 'win') return;
-      const n = winning[g.id] || 0;
-      if (n >= POT_WIN_MOVES) thrown.add(i);
-      else if (n === 1) gifts.add(i);
-    });
-    const now = performance(opps, sc, w, cur);
-    const conv = performance(opps, sc.map((s, i) => (thrown.has(i) ? 1 : s)), w, cur);
-    const best = performance(opps, sc.map((s, i) => (thrown.has(i) || gifts.has(i) ? 1 : s)), w, cur);
-    const sw = w.reduce((a, b) => a + b, 0);
-    const nEff = (sw * sw) / w.reduce((a, b) => a + b * b, 0);
-    const se = 400 / Math.log(10) / Math.sqrt(nEff * 0.25);
+    const est = estimate(games, winning, cur);
+    const sw = est.w.reduce((a, b) => a + b, 0);
+    const nEff = (sw * sw) / est.w.reduce((a, b) => a + b * b, 0);
+    const statMargin = 400 / Math.log(10) / Math.sqrt(nEff * 0.25);
+    const errors = backtest(hist, winning);
+    const measured = errors.length >= POT_BT_MIN;
+    const mae = measured ? errors.reduce((a, e) => a + Math.abs(e), 0) / errors.length : 0;
+    const margin = measured ? Math.max(statMargin, mae) : Math.max(statMargin, 80);
     const near = games.filter((g) => g.acc_me !== null && g.acc_opp !== null && Math.abs(g.opp_rating - g.my_rating) <= POT_NEAR);
     const avg = (f) => round(near.reduce((a, g) => a + f(g), 0) / near.length, 1);
     out[tc] = {
       current: cur, n: games.length, since: games[games.length - 1].end_time, last: games[0].end_time,
-      level: r10(now), potential: r10(conv), max: r10(best), margin: r10(se),
-      thrown: thrown.size, thrown_timeout: [...thrown].filter((i) => games[i].my_code === 'timeout').length,
-      gifts: gifts.size,
+      level: r10(est.level), potential: r10(est.potential), max: r10(est.max),
+      margin: r10(margin), measured, checks: errors.length,
+      bias: measured ? r10(errors.reduce((a, e) => a + e, 0) / errors.length) : null,
+      reliable: measured && margin < POT_UNRELIABLE,
+      horizon: POT_HORIZON, conversion: POT_CONVERSION,
+      thrown: est.thrown.size, thrown_timeout: [...est.thrown].filter((i) => games[i].my_code === 'timeout').length,
+      gifts: est.gifts.size,
       acc: near.length ? { me: avg((g) => g.acc_me), opp: avg((g) => g.acc_opp), n: near.length } : null,
     };
   }

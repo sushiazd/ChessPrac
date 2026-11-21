@@ -335,6 +335,7 @@ a.record:hover{border-color:var(--rule-strong)}
 .pot-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .pot-head .label{font-weight:700;font-size:15px}
 .pot-big{font-family:var(--serif);font-size:40px;line-height:1.1;margin-top:6px;color:var(--pen)}
+.pot-margin{font-size:18px;color:var(--muted);font-family:var(--sans)}
 .pot-scale{position:relative;height:30px;margin:14px 4px 6px}
 .pot-scale .track{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--sheet-2)}
 .pot-scale .gain{position:absolute;top:13px;height:4px;border-radius:2px;background:var(--pen);opacity:.35}

@@ -57,36 +57,42 @@ CP.pages.diag = async function (main, route) {
   const signed = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0');
   const potCard = (k) => {
     const p = pot[k];
-    const lo = Math.min(p.current, p.level, p.potential) - 60, hi = Math.max(p.current, p.potential, p.max) + 60;
+    const lo = Math.min(p.current, p.level, p.potential - p.margin) - 30, hi = Math.max(p.current, p.max, p.potential + p.margin) + 30;
     const x = (v) => `${(100 * (v - lo)) / (hi - lo)}%`;
     const gain = p.potential - p.level, extra = p.max - p.potential;
     const edge = p.acc ? Math.round((p.acc.me - p.acc.opp) * 10) / 10 : null;
     const old = Date.now() / 1000 - p.last > 120 * 86400;
+    const conv = Math.round((p.conversion || 0.7) * 10);
     return `<div class="pot ${tc === k ? 'cur' : ''}">
       <div class="pot-head"><span class="label">${POT_NAMES[k]}</span><span class="small muted">chess.com ${p.current}</span></div>
-      <div class="pot-big num">${p.potential}</div>
-      <div class="small muted">Elo potentiel</div>
-      <div class="pot-scale" title="Gris : Elo chess.com · Noir : niveau actuel · Bleu : potentiel">
+      <div class="pot-big num">${p.potential} <span class="pot-margin">± ${p.margin}</span></div>
+      <div class="small muted">Elo potentiel, dans ~${p.horizon || 100} parties classées
+        ${p.reliable ? '' : '<span class="chip" style="margin-left:4px">peu fiable</span>'}</div>
+      <div class="pot-scale" title="Gris : Elo chess.com · Noir : niveau actuel · Bleu : potentiel et sa marge d'erreur">
         <div class="track"></div>
-        <div class="gain" style="left:${x(Math.min(p.level, p.potential))};width:calc(${x(Math.max(p.level, p.potential))} - ${x(Math.min(p.level, p.potential))})"></div>
+        <div class="gain" style="left:${x(p.potential - p.margin)};width:calc(${x(p.potential + p.margin)} - ${x(p.potential - p.margin)})"></div>
         <div class="mk cc" style="left:${x(p.current)}"></div><div class="mk lv" style="left:${x(p.level)}"></div><div class="mk pt" style="left:${x(p.potential)}"></div>
       </div>
-      <div class="pot-legend"><span><i style="background:var(--muted)"></i>chess.com</span><span><i style="background:var(--ink)"></i>niveau actuel</span><span><i style="background:var(--pen)"></i>potentiel</span></div>
+      <div class="pot-legend"><span><i style="background:var(--muted)"></i>chess.com</span><span><i style="background:var(--ink)"></i>niveau actuel</span><span><i style="background:var(--pen)"></i>potentiel ± marge</span></div>
       <ul class="pot-lines">
-        <li>Niveau actuel : <b>${p.level}</b> <span class="muted">± ${p.margin}</span>${p.level - p.current >= 30 ? '<span class="ok">, au-dessus de ton Elo : il devrait suivre</span>' : p.current - p.level >= 30 ? '<span class="muted">, un peu sous ton Elo en ce moment</span>' : ''}</li>
-        <li><b>${signed(gain)}</b> si tu gagnes tes positions gagnantes : ${p.thrown} partie${p.thrown > 1 ? 's' : ''} sur ${p.n}
-          ${p.thrown_timeout ? `<span class="muted">(dont ${p.thrown_timeout} perdue${p.thrown_timeout > 1 ? 's' : ''} au temps)</span>` : ''}</li>
+        <li>Niveau actuel (tes résultats) : <b>${p.level}</b>${p.level - p.current >= 30 ? '<span class="ok">, au-dessus de ton Elo : il devrait suivre</span>' : p.current - p.level >= 30 ? '<span class="muted">, un peu sous ton Elo en ce moment</span>' : ''}</li>
+        <li><b>${signed(gain)}</b> en gagnant ${conv} sur 10 de tes positions gagnantes : ${p.thrown} partie${p.thrown > 1 ? 's' : ''} gâchée${p.thrown > 1 ? 's' : ''} sur ${p.n}
+          ${p.thrown_timeout ? `<span class="muted">(dont ${p.thrown_timeout} au temps)</span>` : ''}</li>
         ${p.gifts ? `<li><b>${signed(extra)}</b> de plus en punissant les cadeaux adverses pas vus (${p.gifts}) : jusqu'à <b>${p.max}</b></li>` : ''}
         ${p.acc ? `<li>Précision contre des joueurs de ton Elo : <b>${fmt.pct(p.acc.me, 1)}</b> contre ${fmt.pct(p.acc.opp, 1)}
           <span class="${edge >= 1.5 ? 'ok' : edge <= -1.5 ? 'bad' : 'muted'}">(${edge > 0 ? '+' : edge < 0 ? '−' : ''}${String(Math.abs(edge)).replace('.', ',')})</span></li>` : ''}
+        <li class="muted">${p.measured
+    ? `Vérifié sur ton historique : ${p.checks} prévisions passées comparées à ton Elo réel ${p.horizon || 100} parties plus tard, erreur moyenne ± ${p.margin}.${p.reliable ? '' : ' Trop d’écart pour s’y fier : à prendre comme une tendance.'}`
+    : 'Pas encore assez d’historique pour vérifier ce chiffre (il faut environ 200 parties classées) : marge estimée.'}</li>
         ${old ? `<li class="muted">Dernière partie classée ${fmt.rel(p.last)} : l'estimation date un peu.</li>` : ''}
       </ul></div>`;
   };
   const potKeys = ['rapid', 'blitz', 'bullet'].filter((k) => pot[k]);
   const potHtml = potKeys.length ? `<div class="card" style="margin-bottom:18px"><div class="card-title"><h2>${CP.online ? 'Elo potentiel' : 'Ton Elo potentiel'}</h2></div>
       <p class="small muted" style="margin:-4px 0 14px">Calculé sur les 50 dernières parties classées de chaque cadence (les plus récentes comptent plus),
-        avec l'Elo des adversaires. <b>Niveau actuel</b> : l'Elo qui correspond à tes résultats. <b>Potentiel</b> : le même calcul si tu avais gagné
-        les parties où tu as eu au moins 85 % de chances de gain.</p>
+        avec l'Elo des adversaires. <b>Niveau actuel</b> : l'Elo qui correspond à tes résultats. <b>Potentiel</b> : le même calcul en gagnant 7 sur 10
+        des parties où tu as eu au moins 85 % de chances de gain. C'est une prévision de ton Elo dans environ 100 parties classées,
+        avec sa marge d'erreur mesurée sur tes propres parties passées.</p>
       <div class="pot-grid">${potKeys.map(potCard).join('')}</div></div>` : '';
 
   main.innerHTML = `
